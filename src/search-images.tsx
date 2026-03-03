@@ -34,22 +34,30 @@ export default function Command() {
 
   const { data, isLoading, error, revalidate } = useCachedPromise(
     async (query: string, selectedProviderId: string) => {
-      if (!query.trim()) return { images: [] as RegistryImage[], providers: await getProviderClients() };
+      if (!query.trim())
+        return { images: [] as RegistryImage[], providers: await getProviderClients(), failures: [] as string[] };
       const providers = await getProviderClients(selectedProviderId === "all" ? undefined : selectedProviderId);
       const results = await Promise.all(
         providers.map(async ({ config, client }) => {
           try {
             const images = await client.searchImages(query);
-            return images.map((image) => ({ ...image, providerLabel: config.label }));
-          } catch {
-            return [] as RegistryImage[];
+            return {
+              images: images.map((image) => ({ ...image, providerLabel: config.label })),
+              failure: undefined as string | undefined,
+            };
+          } catch (providerError) {
+            const message = providerError instanceof Error ? providerError.message : String(providerError);
+            return { images: [] as RegistryImage[], failure: `${config.label}: ${message}` };
           }
         }),
       );
 
       return {
-        images: results.flat().sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? "")),
+        images: results
+          .flatMap((result) => result.images)
+          .sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? "")),
         providers,
+        failures: results.map((result) => result.failure).filter((item): item is string => Boolean(item)),
       };
     },
     [searchText, providerFilter],
@@ -58,6 +66,7 @@ export default function Command() {
 
   const providers = useMemo(() => data?.providers ?? [], [data]);
   const images = useMemo(() => data?.images ?? [], [data]);
+  const failures = useMemo(() => data?.failures ?? [], [data]);
 
   async function runAction(action: () => Promise<void>, loadingTitle: string, doneTitle: string) {
     await showToast({ style: Toast.Style.Animated, title: loadingTitle });
@@ -150,6 +159,9 @@ export default function Command() {
       ) : null}
       {!searchText.trim() && providers.length > 0 ? (
         <List.EmptyView title="Type to search" description="Default search runs across all configured providers" />
+      ) : null}
+      {searchText.trim() && images.length === 0 && failures.length > 0 ? (
+        <List.EmptyView title="Search failed" description={failures.join(" | ")} icon={Icon.ExclamationMark} />
       ) : null}
 
       {images.map((image) => {

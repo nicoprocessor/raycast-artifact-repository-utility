@@ -26,6 +26,13 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
   }) {
     setIsLoading(true);
     try {
+      if (values.kind === "private-arbor" && !values.baseUrl?.trim()) {
+        throw new Error("Registry Base URL is required for Private Harbor.");
+      }
+      if (!values.username?.trim() || !values.password?.trim()) {
+        throw new Error("Username and Password/Token are required.");
+      }
+
       const config: ProviderConfig = {
         id: `${Date.now()}`,
         kind: values.kind,
