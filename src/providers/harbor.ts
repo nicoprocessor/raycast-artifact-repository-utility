@@ -51,9 +51,26 @@ export class HarborProvider implements RegistryProvider {
   private readonly project?: string;
 
   constructor(private readonly config: ProviderConfig) {
-    this.baseUrl = (config.baseUrl ?? "").replace(/\/$/, "");
+    this.baseUrl = HarborProvider.normalizeBaseUrl(config.baseUrl);
     this.authorization = `Basic ${Buffer.from(`${config.username ?? ""}:${config.password ?? ""}`).toString("base64")}`;
     this.project = config.defaultProject?.trim() || undefined;
+  }
+
+  private static normalizeBaseUrl(baseUrl?: string): string {
+    const raw = (baseUrl ?? "").trim();
+    if (!raw) {
+      throw new Error("Invalid Harbor base URL. Example: https://registry.invisiblefarm.it");
+    }
+
+    const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(withProtocol);
+    } catch {
+      throw new Error("Invalid Harbor base URL. Example: https://registry.invisiblefarm.it");
+    }
+
+    return `${parsed.protocol}//${parsed.host}`;
   }
 
   async searchImages(query: string): Promise<RegistryImage[]> {

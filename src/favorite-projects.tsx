@@ -29,12 +29,16 @@ export default function Command() {
       const clients = await getProviderClients();
       const projects = await Promise.all(
         clients.map(async ({ config, client }) => {
-          const listed = await client.listProjects("");
-          return listed
-            .filter((project) =>
-              parsedFavorites.some((fav) => fav.providerId === config.id && fav.name === project.name),
-            )
-            .map((project) => ({ ...project, providerKind: config.kind }));
+          try {
+            const listed = await client.listProjects("");
+            return listed
+              .filter((project) =>
+                parsedFavorites.some((fav) => fav.providerId === config.id && fav.name === project.name),
+              )
+              .map((project) => ({ ...project, providerKind: config.kind }));
+          } catch {
+            return [];
+          }
         }),
       );
 
