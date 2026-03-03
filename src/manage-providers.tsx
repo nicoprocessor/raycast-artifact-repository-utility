@@ -80,7 +80,7 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
       />
       {kind === "private-arbor" ? (
         <>
-          <Form.Description text="Per Harbor usa solo la base URL, ad esempio: https://registry.invisiblefarm.it (senza /harbor)." />
+          <Form.Description text="For Harbor, use only the base URL. Example: https://registry.invisiblefarm.it (without /harbor)." />
           <Form.TextField id="baseUrl" title="Registry Base URL" placeholder="https://registry.invisiblefarm.it" />
           <Form.TextField id="username" title="Registry Username" placeholder="username" />
           <Form.PasswordField id="password" title="Registry Password / Token" />
@@ -169,7 +169,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
       <Form.TextField id="label" title="Display Name" defaultValue={props.provider.label} />
       {kind === "private-arbor" ? (
         <>
-          <Form.Description text="Per Harbor usa solo la base URL, ad esempio: https://registry.invisiblefarm.it (senza /harbor)." />
+          <Form.Description text="For Harbor, use only the base URL. Example: https://registry.invisiblefarm.it (without /harbor)." />
           <Form.TextField
             id="baseUrl"
             title="Registry Base URL"
