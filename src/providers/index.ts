@@ -6,9 +6,9 @@ import { ProviderConfig, RegistryProvider } from "./types";
 export function providerIcon(kind: ProviderConfig["kind"]): string {
   switch (kind) {
     case "private-arbor":
-      return "assets/providers/private-arbor.png";
+      return "providers/private-harbor.png";
     case "docker-hub":
-      return "assets/providers/docker-hub.png";
+      return "providers/docker-hub.png";
     default:
       return "assets/icon.png";
   }
