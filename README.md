@@ -1,4 +1,4 @@
-# Private Repository Utility
+# Raycast Artifact Repository Utility
 
 Raycast extension per cercare immagini/artifacts su registry privati, partendo da Harbor.
 

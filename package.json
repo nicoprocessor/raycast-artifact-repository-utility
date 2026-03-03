@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "private-repository-utility",
-  "title": "Private Repository Utility",
+  "name": "raycast-artifact-repository-utility",
+  "title": "Raycast Artifact Repository Utility",
   "description": "Search images and artifacts across private container registries (starting with Harbor).",
   "icon": "icon.png",
   "author": "nicoprocessor",
