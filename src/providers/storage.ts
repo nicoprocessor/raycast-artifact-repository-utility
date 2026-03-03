@@ -28,3 +28,8 @@ export async function removeProviderConfig(providerId: string): Promise<void> {
   const existing = await getProviderConfigs();
   await saveProviderConfigs(existing.filter((provider) => provider.id !== providerId));
 }
+
+export async function updateProviderConfig(providerId: string, next: ProviderConfig): Promise<void> {
+  const existing = await getProviderConfigs();
+  await saveProviderConfigs(existing.map((provider) => (provider.id === providerId ? next : provider)));
+}
