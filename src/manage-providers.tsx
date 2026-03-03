@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Form, Icon, List, showHUD, showToast, Toast, useNavigation } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useMemo, useState } from "react";
-import { providerIcon } from "./providers";
+import { createProvider, providerIcon } from "./providers";
 import { addProviderConfig, getProviderConfigs, removeProviderConfig, updateProviderConfig } from "./providers/storage";
 import { ProviderConfig, ProviderKind } from "./providers/types";
 
@@ -80,7 +80,8 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
       />
       {kind === "private-arbor" ? (
         <>
-          <Form.TextField id="baseUrl" title="Registry Base URL" placeholder="https://registry.example.com" />
+          <Form.Description text="Per Harbor usa solo la base URL, ad esempio: https://registry.invisiblefarm.it (senza /harbor)." />
+          <Form.TextField id="baseUrl" title="Registry Base URL" placeholder="https://registry.invisiblefarm.it" />
           <Form.TextField id="username" title="Registry Username" placeholder="username" />
           <Form.PasswordField id="password" title="Registry Password / Token" />
           <Form.TextField id="defaultProject" title="Default Project (Optional)" placeholder="project-name" />
@@ -168,11 +169,12 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
       <Form.TextField id="label" title="Display Name" defaultValue={props.provider.label} />
       {kind === "private-arbor" ? (
         <>
+          <Form.Description text="Per Harbor usa solo la base URL, ad esempio: https://registry.invisiblefarm.it (senza /harbor)." />
           <Form.TextField
             id="baseUrl"
             title="Registry Base URL"
             defaultValue={props.provider.baseUrl}
-            placeholder="https://registry.example.com"
+            placeholder="https://registry.invisiblefarm.it"
           />
           <Form.TextField
             id="username"
@@ -228,6 +230,21 @@ export default function Command() {
     await showHUD(`Removed ${label}`);
   }
 
+  async function testConnection(provider: ProviderConfig) {
+    await showToast({ style: Toast.Style.Animated, title: `Testing ${provider.label}...` });
+    try {
+      const client = createProvider(provider);
+      await client.listProjects("");
+      await showHUD(`Connection OK: ${provider.label}`);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: `Connection failed: ${provider.label}`,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return (
     <List isLoading={isLoading} searchBarPlaceholder="Manage configured providers">
       {providers.length === 0 ? (
@@ -269,6 +286,7 @@ export default function Command() {
                 icon={Icon.Pencil}
                 target={<EditProviderForm provider={provider} onSaved={revalidate} />}
               />
+              <Action title="Test Connection" icon={Icon.Network} onAction={() => testConnection(provider)} />
               <Action
                 title="Remove Provider"
                 style={Action.Style.Destructive}
