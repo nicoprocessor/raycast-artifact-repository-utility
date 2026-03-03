@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, List, showHUD } from "@raycast/api";
+import { Action, ActionPanel, Clipboard, Color, Icon, List, showHUD, showToast, Toast } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
@@ -55,6 +55,35 @@ function ProjectRepositoriesDetail(props: { provider: RegistryProvider; projectN
   );
 
   const repositories = data ?? [];
+  const { data: latestTags } = useCachedPromise(
+    async (projectName: string, repositoryNames: string) => {
+      const names = repositoryNames ? repositoryNames.split(",").filter(Boolean) : [];
+      const result = await Promise.all(
+        names.map(async (name) => {
+          try {
+            const tag = await props.provider.getLatestRepositoryTag(projectName, name);
+            return [name, tag] as const;
+          } catch {
+            return [name, undefined] as const;
+          }
+        }),
+      );
+      return Object.fromEntries(result) as Record<string, string | undefined>;
+    },
+    [props.projectName, repositories.map((repo) => repo.name).join(",")],
+    { keepPreviousData: true },
+  );
+
+  async function copyLatestTag(repositoryName: string) {
+    const tag =
+      latestTags?.[repositoryName] ?? (await props.provider.getLatestRepositoryTag(props.projectName, repositoryName));
+    if (!tag) {
+      await showToast({ style: Toast.Style.Failure, title: "No tag available" });
+      return;
+    }
+    await Clipboard.copy(tag);
+    await showToast({ style: Toast.Style.Success, title: `Latest tag copied: ${tag}` });
+  }
 
   return (
     <List
@@ -70,6 +99,7 @@ function ProjectRepositoriesDetail(props: { provider: RegistryProvider; projectN
           icon={Icon.Box}
           title={repository.name}
           accessories={[
+            latestTags?.[repository.name] ? { tag: `latest:${latestTags[repository.name]}` } : { text: "" },
             repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
             repository.updateTime ? { text: new Date(repository.updateTime).toLocaleDateString() } : { text: "" },
           ]}
@@ -77,6 +107,7 @@ function ProjectRepositoriesDetail(props: { provider: RegistryProvider; projectN
             <ActionPanel>
               <Action.OpenInBrowser title="Open Repository in Browser" url={repository.url} />
               <Action.CopyToClipboard title="Copy Repository Name" content={repository.name} />
+              <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(repository.name)} />
             </ActionPanel>
           }
         />

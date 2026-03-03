@@ -158,6 +158,16 @@ export class HarborProvider implements RegistryProvider {
       .sort((a, b) => (b.updateTime ?? "").localeCompare(a.updateTime ?? ""));
   }
 
+  async getLatestRepositoryTag(projectName: string, repositoryName: string): Promise<string | undefined> {
+    const artifacts = await this.fetchJson<HarborArtifact[]>(
+      `/api/v2.0/projects/${encodeURIComponent(projectName)}/repositories/${encodeURIComponent(
+        repositoryName,
+      )}/artifacts?with_tag=true&page_size=1`,
+    );
+    const tags = artifacts[0]?.tags ?? [];
+    return tags.find((tag) => tag.name.toLowerCase() !== "untagged")?.name ?? tags[0]?.name;
+  }
+
   async deleteTag(projectName: string, repositoryName: string, reference: string, tagName: string): Promise<void> {
     await this.fetchNoContent(
       `/api/v2.0/projects/${encodeURIComponent(projectName)}/repositories/${encodeURIComponent(

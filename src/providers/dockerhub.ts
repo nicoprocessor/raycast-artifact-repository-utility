@@ -101,6 +101,15 @@ export class DockerHubProvider implements RegistryProvider {
     }));
   }
 
+  async getLatestRepositoryTag(projectName: string, repositoryName: string): Promise<string | undefined> {
+    const tags = await this.fetchJson<{ results?: DockerTag[] }>(
+      `/v2/repositories/${encodeURIComponent(projectName)}/${encodeURIComponent(
+        repositoryName,
+      )}/tags?page_size=1&ordering=last_updated`,
+    );
+    return tags.results?.[0]?.name;
+  }
+
   async deleteTag(): Promise<void> {
     throw new Error("Docker Hub tag deletion is not enabled in this MVP provider.");
   }

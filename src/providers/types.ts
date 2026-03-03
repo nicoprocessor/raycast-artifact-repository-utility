@@ -66,6 +66,7 @@ export interface RegistryProvider {
   listProjects(query?: string): Promise<RegistryProject[]>;
   listProjectMembers(projectName: string): Promise<RegistryProjectMember[]>;
   listProjectRepositories(projectName: string, query?: string): Promise<RegistryRepository[]>;
+  getLatestRepositoryTag(projectName: string, repositoryName: string): Promise<string | undefined>;
   deleteTag(projectName: string, repositoryName: string, reference: string, tagName: string): Promise<void>;
   deleteArtifact(projectName: string, repositoryName: string, reference: string): Promise<void>;
   triggerScan(projectName: string, repositoryName: string, reference: string): Promise<void>;
