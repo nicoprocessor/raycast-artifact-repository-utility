@@ -1,5 +1,5 @@
-import { Action, ActionPanel, Form, Icon, List, showHUD, showToast, Toast, useNavigation } from "@raycast/api";
-import { useCachedPromise } from "@raycast/utils";
+import { Action, ActionPanel, Color, Form, Icon, List, showToast, Toast, useNavigation } from "@raycast/api";
+import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { createProvider, providerIcon } from "./providers";
 import { addProviderConfig, getProviderConfigs, removeProviderConfig, updateProviderConfig } from "./providers/storage";
@@ -45,7 +45,7 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
       };
 
       await addProviderConfig(config);
-      await showHUD(`Provider added: ${config.label}`);
+      await showToast({ style: Toast.Style.Success, title: `Provider added: ${config.label}` });
       if (props.onSaved) await props.onSaved();
       pop();
     } catch (error) {
@@ -138,7 +138,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
       };
 
       await updateProviderConfig(props.provider.id, config);
-      await showHUD(`Provider updated: ${config.label}`);
+      await showToast({ style: Toast.Style.Success, title: `Provider updated: ${config.label}` });
       if (props.onSaved) await props.onSaved();
       pop();
     } catch (error) {
@@ -223,20 +223,38 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
 export default function Command() {
   const { data, isLoading, revalidate } = useCachedPromise(getProviderConfigs, []);
   const providers = useMemo(() => data ?? [], [data]);
+  const { value: connectionStatusRaw, setValue: setConnectionStatusRaw } = useLocalStorage<string>(
+    "provider-connection-status",
+    "{}",
+  );
+  const connectionStatus = useMemo(() => {
+    try {
+      return JSON.parse(connectionStatusRaw ?? "{}") as Record<string, "success" | "failure" | "testing">;
+    } catch {
+      return {} as Record<string, "success" | "failure" | "testing">;
+    }
+  }, [connectionStatusRaw]);
+
+  async function setConnectionStatus(providerId: string, status: "success" | "failure" | "testing") {
+    await setConnectionStatusRaw(JSON.stringify({ ...connectionStatus, [providerId]: status }));
+  }
 
   async function removeProvider(id: string, label: string) {
     await removeProviderConfig(id);
     await revalidate();
-    await showHUD(`Removed ${label}`);
+    await showToast({ style: Toast.Style.Success, title: `Removed ${label}` });
   }
 
   async function testConnection(provider: ProviderConfig) {
+    await setConnectionStatus(provider.id, "testing");
     await showToast({ style: Toast.Style.Animated, title: `Testing ${provider.label}...` });
     try {
       const client = createProvider(provider);
       await client.listProjects("");
-      await showHUD(`Connection OK: ${provider.label}`);
+      await setConnectionStatus(provider.id, "success");
+      await showToast({ style: Toast.Style.Success, title: `Connection OK: ${provider.label}` });
     } catch (error) {
+      await setConnectionStatus(provider.id, "failure");
       await showToast({
         style: Toast.Style.Failure,
         title: `Connection failed: ${provider.label}`,
@@ -273,6 +291,13 @@ export default function Command() {
           accessories={[
             provider.kind === "docker-hub" ? { tag: "Beta" } : { text: "" },
             provider.password ? { text: "••••••••" } : { text: "" },
+            connectionStatus[provider.id] === "success"
+              ? { icon: { source: Icon.Dot, tintColor: Color.Green }, tooltip: "Connection OK" }
+              : connectionStatus[provider.id] === "failure"
+              ? { icon: { source: Icon.Dot, tintColor: Color.Red }, tooltip: "Connection failed" }
+              : connectionStatus[provider.id] === "testing"
+              ? { icon: { source: Icon.Dot, tintColor: Color.Orange }, tooltip: "Testing..." }
+              : { text: "" },
           ]}
           actions={
             <ActionPanel>
