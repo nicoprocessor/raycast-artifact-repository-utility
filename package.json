@@ -13,53 +13,26 @@
     {
       "name": "search-images",
       "title": "Search Images",
-      "description": "Search Harbor images and show size, pushed time, and scan summary",
-      "mode": "view",
-      "preferences": [
-        {
-          "name": "provider",
-          "title": "Provider",
-          "description": "Registry provider to query",
-          "type": "dropdown",
-          "required": true,
-          "default": "harbor",
-          "data": [
-            {
-              "title": "Harbor",
-              "value": "harbor"
-            }
-          ]
-        },
-        {
-          "name": "harborBaseUrl",
-          "title": "Harbor Base URL",
-          "description": "Base URL, e.g. https://registry.invisiblefarm.it",
-          "type": "textfield",
-          "required": true,
-          "default": "https://registry.invisiblefarm.it"
-        },
-        {
-          "name": "harborUsername",
-          "title": "Harbor Username",
-          "description": "Harbor username (or robot account name)",
-          "type": "textfield",
-          "required": true
-        },
-        {
-          "name": "harborPassword",
-          "title": "Harbor Password / Token",
-          "description": "Harbor password or robot token",
-          "type": "password",
-          "required": true
-        },
-        {
-          "name": "harborProject",
-          "title": "Default Project (Optional)",
-          "description": "Limit search to one project; leave empty to search all",
-          "type": "textfield",
-          "required": false
-        }
-      ]
+      "description": "Search across all providers by default, or filter by provider",
+      "mode": "view"
+    },
+    {
+      "name": "search-projects",
+      "title": "Search Projects",
+      "description": "Search projects and inspect members for selected provider(s)",
+      "mode": "view"
+    },
+    {
+      "name": "favorite-projects",
+      "title": "Favorite Projects",
+      "description": "Quick access to favorite projects",
+      "mode": "view"
+    },
+    {
+      "name": "manage-providers",
+      "title": "Manage Providers",
+      "description": "Add and manage registry providers (Private Arbor, Docker Hub)",
+      "mode": "view"
     }
   ],
   "dependencies": {

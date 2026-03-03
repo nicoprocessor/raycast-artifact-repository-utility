@@ -14,22 +14,23 @@ declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
   /** Preferences accessible in the `search-images` command */
-  export type SearchImages = ExtensionPreferences & {
-  /** Provider - Registry provider to query */
-  "provider": "harbor",
-  /** Harbor Base URL - Base URL, e.g. https://registry.invisiblefarm.it */
-  "harborBaseUrl": string,
-  /** Harbor Username - Harbor username (or robot account name) */
-  "harborUsername": string,
-  /** Harbor Password / Token - Harbor password or robot token */
-  "harborPassword": string,
-  /** Default Project (Optional) - Limit search to one project; leave empty to search all */
-  "harborProject"?: string
-}
+  export type SearchImages = ExtensionPreferences & {}
+  /** Preferences accessible in the `search-projects` command */
+  export type SearchProjects = ExtensionPreferences & {}
+  /** Preferences accessible in the `favorite-projects` command */
+  export type FavoriteProjects = ExtensionPreferences & {}
+  /** Preferences accessible in the `manage-providers` command */
+  export type ManageProviders = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `search-images` command */
   export type SearchImages = {}
+  /** Arguments passed to the `search-projects` command */
+  export type SearchProjects = {}
+  /** Arguments passed to the `favorite-projects` command */
+  export type FavoriteProjects = {}
+  /** Arguments passed to the `manage-providers` command */
+  export type ManageProviders = {}
 }
 

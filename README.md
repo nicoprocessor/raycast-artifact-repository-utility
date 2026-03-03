@@ -1,20 +1,17 @@
 # Raycast Artifact Repository Utility
 
-Raycast extension per cercare immagini/artifacts su registry privati, partendo da Harbor.
+Raycast extension per lavorare con registry privati, con supporto multi-provider.
 
-## Setup iniziale
+## Workflow
 
-1. Apri il comando **Search Images** in Raycast.
-2. Configura le preferenze:
-   - Provider: `Harbor`
-   - Harbor Base URL: `https://registry.invisiblefarm.it`
-   - Harbor Username
-   - Harbor Password / Token
-   - Default Project (opzionale)
+- **Manage Providers**: aggiungi uno o piu provider (Private Arbor, Docker Hub Beta).
+- **Search Images**: cerca su tutti i provider per default; puoi filtrare per provider dal dropdown.
+- **Search Projects**: flusso per provider o aggregato, con view members dove disponibile.
+- **Favorite Projects**: accesso rapido ai preferiti.
 
-## Funzionalità MVP
+## Note funzionali
 
-- Ricerca immagini per testo.
-- Visualizzazione repository:tag, data push, dimensione.
-- Sommario vulnerabilità (se presente in `scan_overview`).
-- Architettura provider-based, pronta per futuri provider oltre Harbor.
+- Se nessun provider e configurato, i comandi mostrano onboarding rapido (⌘N).
+- In Search Images, la severita non mostra check verde quando lo scan non e ancora stato eseguito.
+- Azioni disponibili su immagini: copy, open artifact/project, trigger scan, delete tag/artifact.
+- Docker Hub e in beta (alcuni endpoint come scan/delete possono non essere disponibili via API).
