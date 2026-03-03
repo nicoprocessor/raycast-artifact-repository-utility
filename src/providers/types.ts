@@ -53,10 +53,19 @@ export type RegistryProjectMember = {
   role: string;
 };
 
+export type RegistryRepository = {
+  id: string;
+  name: string;
+  artifactCount?: number;
+  updateTime?: string;
+  url: string;
+};
+
 export interface RegistryProvider {
   searchImages(query: string): Promise<RegistryImage[]>;
   listProjects(query?: string): Promise<RegistryProject[]>;
   listProjectMembers(projectName: string): Promise<RegistryProjectMember[]>;
+  listProjectRepositories(projectName: string, query?: string): Promise<RegistryRepository[]>;
   deleteTag(projectName: string, repositoryName: string, reference: string, tagName: string): Promise<void>;
   deleteArtifact(projectName: string, repositoryName: string, reference: string): Promise<void>;
   triggerScan(projectName: string, repositoryName: string, reference: string): Promise<void>;

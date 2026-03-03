@@ -1,5 +1,5 @@
 import { Action, ActionPanel, Alert, Color, confirmAlert, Icon, List, showHUD, showToast, Toast } from "@raycast/api";
-import { useCachedPromise } from "@raycast/utils";
+import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
@@ -31,6 +31,11 @@ function vulnDetail(summary: VulnerabilitySummary) {
 export default function Command() {
   const [searchText, setSearchText] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
+  const { value: hideUntaggedRaw, setValue: setHideUntaggedRaw } = useLocalStorage<string>(
+    "search-images-hide-untagged",
+    "false",
+  );
+  const hideUntagged = hideUntaggedRaw === "true";
 
   const { data, isLoading, error, revalidate } = useCachedPromise(
     async (query: string, selectedProviderId: string) => {
@@ -65,7 +70,10 @@ export default function Command() {
   );
 
   const providers = useMemo(() => data?.providers ?? [], [data]);
-  const images = useMemo(() => data?.images ?? [], [data]);
+  const images = useMemo(
+    () => (data?.images ?? []).filter((image) => (hideUntagged ? image.tag.toLowerCase() !== "untagged" : true)),
+    [data, hideUntagged],
+  );
   const failures = useMemo(() => data?.failures ?? [], [data]);
 
   async function runAction(action: () => Promise<void>, loadingTitle: string, doneTitle: string) {
@@ -163,6 +171,12 @@ export default function Command() {
       {searchText.trim() && images.length === 0 && failures.length > 0 ? (
         <List.EmptyView title="Search failed" description={failures.join(" | ")} icon={Icon.ExclamationMark} />
       ) : null}
+      {searchText.trim() && images.length === 0 && failures.length === 0 && hideUntagged ? (
+        <List.EmptyView
+          title="No tagged images found"
+          description="Disable 'Hide Untagged Images' to include untagged artifacts."
+        />
+      ) : null}
 
       {images.map((image) => {
         const severity = severityBadge(image.scanStatus, image.vulnerabilitySummary);
@@ -195,6 +209,11 @@ export default function Command() {
                 <Action.CopyToClipboard title="Copy Digest" content={image.digest} />
                 <Action.OpenInBrowser title="Open Artifact in Browser" url={image.artifactUrl} />
                 <Action.OpenInBrowser title="Open Project in Browser" url={image.projectUrl} />
+                <Action
+                  title={hideUntagged ? "Show Untagged Images" : "Hide Untagged Images"}
+                  icon={Icon.Filter}
+                  onAction={() => setHideUntaggedRaw(String(!hideUntagged))}
+                />
                 <Action title="Trigger Scan" icon={Icon.MagnifyingGlass} onAction={() => onTriggerScan(image)} />
                 <Action
                   title="Delete Tag"

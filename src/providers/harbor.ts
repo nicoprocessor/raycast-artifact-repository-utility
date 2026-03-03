@@ -4,6 +4,7 @@ import {
   RegistryImage,
   RegistryProject,
   RegistryProjectMember,
+  RegistryRepository,
   RegistryProvider,
   VulnerabilitySummary,
 } from "./types";
@@ -34,6 +35,12 @@ type HarborArtifact = {
   push_time?: string;
   tags?: Array<{ name: string }>;
   scan_overview?: Record<string, { summary?: Record<string, number> }>;
+};
+
+type HarborRepository = {
+  name: string;
+  artifact_count?: number;
+  update_time?: string;
 };
 
 const EMPTY_VULNERABILITY: VulnerabilitySummary = {
@@ -127,6 +134,30 @@ export class HarborProvider implements RegistryProvider {
       .sort((a, b) => a.username.localeCompare(b.username));
   }
 
+  async listProjectRepositories(projectName: string, query = ""): Promise<RegistryRepository[]> {
+    const repositories = await this.fetchJson<HarborRepository[]>(
+      `/api/v2.0/projects/${encodeURIComponent(projectName)}/repositories?page=1&page_size=100`,
+    );
+
+    return repositories
+      .map((repo) => {
+        const repositoryName = repo.name.startsWith(`${projectName}/`)
+          ? repo.name.slice(projectName.length + 1)
+          : repo.name;
+        return {
+          id: `${this.config.id}:${projectName}:${repositoryName}`,
+          name: repositoryName,
+          artifactCount: repo.artifact_count,
+          updateTime: repo.update_time,
+          url: `${this.baseUrl}/harbor/projects/${encodeURIComponent(projectName)}/repositories/${encodeURIComponent(
+            repositoryName,
+          )}`,
+        };
+      })
+      .filter((repo) => repo.name.toLowerCase().includes(query.toLowerCase()))
+      .sort((a, b) => (b.updateTime ?? "").localeCompare(a.updateTime ?? ""));
+  }
+
   async deleteTag(projectName: string, repositoryName: string, reference: string, tagName: string): Promise<void> {
     await this.fetchNoContent(
       `/api/v2.0/projects/${encodeURIComponent(projectName)}/repositories/${encodeURIComponent(
@@ -169,7 +200,7 @@ export class HarborProvider implements RegistryProvider {
   private async listRepositoriesFromProject(
     projectName: string,
   ): Promise<Array<{ project: string; repository: string }>> {
-    const repositories = await this.fetchJson<Array<{ name: string }>>(
+    const repositories = await this.fetchJson<HarborRepository[]>(
       `/api/v2.0/projects/${encodeURIComponent(projectName)}/repositories?page=1&page_size=100`,
     );
 

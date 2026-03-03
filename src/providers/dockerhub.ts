@@ -4,6 +4,7 @@ import {
   RegistryImage,
   RegistryProject,
   RegistryProjectMember,
+  RegistryRepository,
   RegistryProvider,
   VulnerabilitySummary,
 } from "./types";
@@ -85,6 +86,19 @@ export class DockerHubProvider implements RegistryProvider {
     } catch {
       return [];
     }
+  }
+
+  async listProjectRepositories(projectName: string, query = ""): Promise<RegistryRepository[]> {
+    const repositories = await this.fetchJson<{ results?: DockerRepository[] }>(
+      `/v2/repositories/${encodeURIComponent(projectName)}/?page_size=100&name=${encodeURIComponent(query)}`,
+    );
+
+    return (repositories.results ?? []).map((repo) => ({
+      id: `${this.config.id}:${projectName}:${repo.name}`,
+      name: repo.name,
+      updateTime: repo.last_updated,
+      url: `https://hub.docker.com/r/${encodeURIComponent(projectName)}/${encodeURIComponent(repo.name)}`,
+    }));
   }
 
   async deleteTag(): Promise<void> {

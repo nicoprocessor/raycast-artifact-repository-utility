@@ -7,11 +7,6 @@ import { RegistryProvider } from "./providers/types";
 
 type FavoriteProject = { providerId: string; name: string };
 
-function membersMarkdown(items: Array<{ username: string; role: string }>): string {
-  if (!items.length) return "No members found or endpoint not available for this provider.";
-  return ["## Members", ...items.map((member) => `- **${member.username}** — ${member.role}`)].join("\n");
-}
-
 function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: string }) {
   const { data, isLoading } = useCachedPromise(
     (projectName: string) => props.provider.listProjectMembers(projectName),
@@ -21,9 +16,71 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
     },
   );
 
+  const members = data ?? [];
+
   return (
-    <List isLoading={isLoading} searchBarPlaceholder="Project members">
-      <List.Item title={props.projectName} detail={<List.Item.Detail markdown={membersMarkdown(data ?? [])} />} />
+    <List isLoading={isLoading} searchBarPlaceholder="Project members" throttle>
+      {members.length === 0 ? (
+        <List.EmptyView
+          title="No members found"
+          description="Members may be unavailable for this provider or your role."
+        />
+      ) : null}
+      {members.map((member) => (
+        <List.Item
+          key={member.id}
+          icon={Icon.Person}
+          title={member.username}
+          accessories={[{ text: member.role }]}
+          actions={
+            <ActionPanel>
+              <Action.CopyToClipboard title="Copy Username" content={member.username} />
+              <Action.CopyToClipboard title="Copy Role" content={member.role} />
+            </ActionPanel>
+          }
+        />
+      ))}
+    </List>
+  );
+}
+
+function ProjectRepositoriesDetail(props: { provider: RegistryProvider; projectName: string }) {
+  const [searchText, setSearchText] = useState("");
+  const { data, isLoading } = useCachedPromise(
+    (projectName: string, query: string) => props.provider.listProjectRepositories(projectName, query),
+    [props.projectName, searchText],
+    {
+      keepPreviousData: true,
+    },
+  );
+
+  const repositories = data ?? [];
+
+  return (
+    <List
+      isLoading={isLoading}
+      onSearchTextChange={setSearchText}
+      searchBarPlaceholder="Search repositories in project"
+      throttle
+    >
+      {repositories.length === 0 ? <List.EmptyView title="No repositories found" /> : null}
+      {repositories.map((repository) => (
+        <List.Item
+          key={repository.id}
+          icon={Icon.Box}
+          title={repository.name}
+          accessories={[
+            repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
+            repository.updateTime ? { text: new Date(repository.updateTime).toLocaleDateString() } : { text: "" },
+          ]}
+          actions={
+            <ActionPanel>
+              <Action.OpenInBrowser title="Open Repository in Browser" url={repository.url} />
+              <Action.CopyToClipboard title="Copy Repository Name" content={repository.name} />
+            </ActionPanel>
+          }
+        />
+      ))}
     </List>
   );
 }
@@ -128,10 +185,16 @@ export default function Command() {
             actions={
               <ActionPanel>
                 {client ? (
-                  <Action.Push
-                    title="View Project Members"
-                    target={<ProjectMembersDetail provider={client} projectName={project.name} />}
-                  />
+                  <>
+                    <Action.Push
+                      title="View Project Repositories"
+                      target={<ProjectRepositoriesDetail provider={client} projectName={project.name} />}
+                    />
+                    <Action.Push
+                      title="View Project Members"
+                      target={<ProjectMembersDetail provider={client} projectName={project.name} />}
+                    />
+                  </>
                 ) : null}
                 <Action.OpenInBrowser title="Open Project in Browser" url={project.projectUrl} />
                 <Action
