@@ -1,0 +1,87 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "private-repository-utility",
+  "title": "Private Repository Utility",
+  "description": "Search images and artifacts across private container registries (starting with Harbor).",
+  "icon": "icon.png",
+  "author": "nicoprocessor",
+  "categories": [
+    "Developer Tools"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search-images",
+      "title": "Search Images",
+      "description": "Search Harbor images and show size, pushed time, and scan summary",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "provider",
+          "title": "Provider",
+          "description": "Registry provider to query",
+          "type": "dropdown",
+          "required": true,
+          "default": "harbor",
+          "data": [
+            {
+              "title": "Harbor",
+              "value": "harbor"
+            }
+          ]
+        },
+        {
+          "name": "harborBaseUrl",
+          "title": "Harbor Base URL",
+          "description": "Base URL, e.g. https://registry.invisiblefarm.it",
+          "type": "textfield",
+          "required": true,
+          "default": "https://registry.invisiblefarm.it"
+        },
+        {
+          "name": "harborUsername",
+          "title": "Harbor Username",
+          "description": "Harbor username (or robot account name)",
+          "type": "textfield",
+          "required": true
+        },
+        {
+          "name": "harborPassword",
+          "title": "Harbor Password / Token",
+          "description": "Harbor password or robot token",
+          "type": "password",
+          "required": true
+        },
+        {
+          "name": "harborProject",
+          "title": "Default Project (Optional)",
+          "description": "Limit search to one project; leave empty to search all",
+          "type": "textfield",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.8",
+    "@raycast/utils": "^2.2.2",
+    "date-fns": "^2.29.2",
+    "lodash": "^4.17.21",
+    "node-fetch": "^3.2.10"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.1.1",
+    "@types/lodash": "^4.14.184",
+    "@types/node": "18.18.4",
+    "eslint": "^9.39.3",
+    "prettier": "^3.0.3",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "ray publish"
+  }
+}
