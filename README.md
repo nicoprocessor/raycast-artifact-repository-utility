@@ -4,7 +4,7 @@ Raycast extension per lavorare con registry privati, con supporto multi-provider
 
 ## Workflow
 
-- **Manage Providers**: aggiungi uno o piu provider (Private Arbor, Docker Hub Beta).
+- **Manage Providers**: aggiungi uno o piu provider (Private Harbor, Docker Hub Beta).
 - **Search Images**: cerca su tutti i provider per default; puoi filtrare per provider dal dropdown.
 - **Search Projects**: flusso per provider o aggregato, con view members dove disponibile.
 - **Favorite Projects**: accesso rapido ai preferiti.

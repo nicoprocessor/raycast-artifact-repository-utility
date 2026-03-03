@@ -7,7 +7,7 @@ import { ProviderConfig, ProviderKind } from "./providers/types";
 
 function buildProviderLabel(kind: ProviderKind, customLabel?: string): string {
   if (customLabel?.trim()) return customLabel.trim();
-  return kind === "private-arbor" ? "Private Arbor" : "Docker Hub";
+  return kind === "private-arbor" ? "Private Harbor" : "Docker Hub";
 }
 
 export function AddProviderForm(props: { onSaved?: () => Promise<void> | void }) {
@@ -63,13 +63,13 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
       }
     >
       <Form.Dropdown id="kind" title="Provider" value={kind} onChange={(value) => setKind(value as ProviderKind)}>
-        <Form.Dropdown.Item value="private-arbor" title="Private Arbor" icon={providerIcon("private-arbor")} />
+        <Form.Dropdown.Item value="private-arbor" title="Private Harbor" icon={providerIcon("private-arbor")} />
         <Form.Dropdown.Item value="docker-hub" title="Docker Hub (Beta)" icon={providerIcon("docker-hub")} />
       </Form.Dropdown>
       <Form.TextField
         id="label"
         title="Display Name"
-        placeholder={kind === "private-arbor" ? "Private Arbor" : "Docker Hub"}
+        placeholder={kind === "private-arbor" ? "Private Harbor" : "Docker Hub"}
       />
       {kind === "private-arbor" ? (
         <>

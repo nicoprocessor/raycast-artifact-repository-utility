@@ -31,7 +31,7 @@
     {
       "name": "manage-providers",
       "title": "Manage Providers",
-      "description": "Add and manage registry providers (Private Arbor, Docker Hub)",
+      "description": "Add and manage registry providers (Private Harbor, Docker Hub)",
       "mode": "view"
     }
   ],
