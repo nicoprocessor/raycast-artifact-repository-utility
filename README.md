@@ -21,12 +21,8 @@ Raycast extension for working with private registries, with multi-provider suppo
 - In Search Images, severity does not show a green check when a scan has not been run yet.
 - Available image actions: copy, open artifact/project, trigger scan, delete tag/artifact.
 - Docker Hub support is in beta (some endpoints like scan/delete may be unavailable via API).
-
-## Screenshots
-
-![Search Images](./media/search-images.png)
-![Search Projects](./media/search-projects.png)
-![Artifact Detail](./media/artifact-detail.png)
+- Provider credentials are stored in macOS Keychain, not in plain LocalStorage.
+- Search caching: Projects use a longer cache window; Images use a short cache window. Press `⌘R` in Search Images/Search Projects to force refresh.
 
 ## Quality Checks
 
