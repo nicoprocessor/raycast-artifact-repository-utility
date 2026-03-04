@@ -168,6 +168,18 @@ export class HarborProvider implements RegistryProvider {
     return tags.find((tag) => tag.name.toLowerCase() !== "untagged")?.name ?? tags[0]?.name;
   }
 
+  async listRepositoryArtifacts(projectName: string, repositoryName: string, query = ""): Promise<RegistryImage[]> {
+    const artifacts = await this.fetchArtifacts(projectName, repositoryName);
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return artifacts;
+    return artifacts.filter(
+      (image) =>
+        image.repository.toLowerCase().includes(normalized) ||
+        image.tag.toLowerCase().includes(normalized) ||
+        image.digest.toLowerCase().includes(normalized),
+    );
+  }
+
   async deleteTag(projectName: string, repositoryName: string, reference: string, tagName: string): Promise<void> {
     await this.fetchNoContent(
       `/api/v2.0/projects/${encodeURIComponent(projectName)}/repositories/${encodeURIComponent(

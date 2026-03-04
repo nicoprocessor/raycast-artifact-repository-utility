@@ -110,6 +110,16 @@ export class DockerHubProvider implements RegistryProvider {
     return tags.results?.[0]?.name;
   }
 
+  async listRepositoryArtifacts(projectName: string, repositoryName: string, query = ""): Promise<RegistryImage[]> {
+    const tagsResponse = await this.fetchJson<{ results?: DockerTag[] }>(
+      `/v2/repositories/${encodeURIComponent(projectName)}/${encodeURIComponent(repositoryName)}/tags?page_size=100${
+        query.trim() ? `&name=${encodeURIComponent(query)}` : ""
+      }`,
+    );
+    const tags = tagsResponse.results ?? [];
+    return tags.map((tag) => this.mapTagToImage(projectName, repositoryName, tag));
+  }
+
   async deleteTag(): Promise<void> {
     throw new Error("Docker Hub tag deletion is not enabled in this MVP provider.");
   }
@@ -136,36 +146,36 @@ export class DockerHubProvider implements RegistryProvider {
         );
         const tags = tagsResponse.results ?? [];
 
-        return tags.map((tag) => {
-          const digest = tag.digest ?? tag.images?.[0]?.digest ?? "-";
-          const size = tag.full_size ?? tag.images?.[0]?.size;
-          const repoFullName = `${repository.namespace}/${repository.name}`;
-
-          return {
-            id: `${this.config.id}:${repoFullName}:${tag.name}`,
-            providerId: this.config.id,
-            providerLabel: this.config.label,
-            project: repository.namespace,
-            repository: repoFullName,
-            repositoryName: repository.name,
-            tag: tag.name,
-            digest,
-            pushedAt: tag.last_updated,
-            sizeBytes: size,
-            scanStatus: "not-scanned" as const,
-            vulnerabilitySummary: { ...EMPTY_VULNERABILITY },
-            projectUrl: `https://hub.docker.com/r/${encodeURIComponent(repository.namespace)}/${encodeURIComponent(
-              repository.name,
-            )}`,
-            artifactUrl: `https://hub.docker.com/r/${encodeURIComponent(repository.namespace)}/${encodeURIComponent(
-              repository.name,
-            )}/tags?name=${encodeURIComponent(tag.name)}`,
-          };
-        });
+        return tags.map((tag) => this.mapTagToImage(repository.namespace, repository.name, tag));
       }),
     );
 
     return images.flat();
+  }
+
+  private mapTagToImage(namespace: string, repositoryName: string, tag: DockerTag): RegistryImage {
+    const digest = tag.digest ?? tag.images?.[0]?.digest ?? "-";
+    const size = tag.full_size ?? tag.images?.[0]?.size;
+    const repoFullName = `${namespace}/${repositoryName}`;
+
+    return {
+      id: `${this.config.id}:${repoFullName}:${tag.name}`,
+      providerId: this.config.id,
+      providerLabel: this.config.label,
+      project: namespace,
+      repository: repoFullName,
+      repositoryName,
+      tag: tag.name,
+      digest,
+      pushedAt: tag.last_updated,
+      sizeBytes: size,
+      scanStatus: "not-scanned",
+      vulnerabilitySummary: { ...EMPTY_VULNERABILITY },
+      projectUrl: `https://hub.docker.com/r/${encodeURIComponent(namespace)}/${encodeURIComponent(repositoryName)}`,
+      artifactUrl: `https://hub.docker.com/r/${encodeURIComponent(namespace)}/${encodeURIComponent(
+        repositoryName,
+      )}/tags?name=${encodeURIComponent(tag.name)}`,
+    };
   }
 
   private async ensureToken(): Promise<string | undefined> {

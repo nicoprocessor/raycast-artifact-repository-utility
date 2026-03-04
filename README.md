@@ -25,3 +25,11 @@ Raycast extension for working with private registries, with multi-provider suppo
 
 - CI pipeline runs on push and pull requests.
 - Pipeline executes lint, build, and automated tests.
+
+## Contributing
+
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting changes.
+
+## License
+
+This project is released under the [WTFPL](./LICENSE).

@@ -11,6 +11,7 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
+import { execFile } from "node:child_process";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
@@ -39,6 +40,24 @@ function severityBadge(scanStatus: RegistryImage["scanStatus"], summary: Vulnera
 
 function vulnDetail(summary: VulnerabilitySummary) {
   return `critical:${summary.critical} · high:${summary.high} · medium:${summary.medium} · low:${summary.low} · unknown:${summary.unknown}`;
+}
+
+function escapeForAppleScript(input: string): string {
+  return input.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+async function runInTerminal(command: string): Promise<void> {
+  const escaped = escapeForAppleScript(command);
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      "osascript",
+      ["-e", 'tell application "Terminal"', "-e", "activate", "-e", `do script "${escaped}"`, "-e", "end tell"],
+      (error) => {
+        if (error) reject(error);
+        else resolve();
+      },
+    );
+  });
 }
 
 type SearchImagesResult = {
@@ -175,6 +194,13 @@ export default function Command() {
     await showToast({ style: Toast.Style.Success, title, message: content });
   }
 
+  async function onPullLocally(fullArtifactPath: string) {
+    const pullCommand = `docker pull ${fullArtifactPath}`;
+    await showToast({ style: Toast.Style.Animated, title: "Starting local pull...", message: pullCommand });
+    await runInTerminal(pullCommand);
+    await showToast({ style: Toast.Style.Success, title: "Docker pull started in Terminal", message: pullCommand });
+  }
+
   const providerDropdown = (
     <List.Dropdown tooltip="Filter Provider" value={providerFilter} onChange={setProviderFilter}>
       <List.Dropdown.Item title="All Providers" value="all" />
@@ -262,6 +288,12 @@ export default function Command() {
                   onAction={() => copyText(fullArtifactPath, "Full artifact path copied")}
                 />
                 <Action title="Copy Digest" onAction={() => copyText(image.digest, "Digest copied")} />
+                <Action
+                  title="Pull Locally (Docker)"
+                  icon={Icon.Download}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
+                  onAction={() => onPullLocally(fullArtifactPath)}
+                />
                 <Action.OpenInBrowser title="Open Artifact in Browser" url={image.artifactUrl} />
                 <Action.OpenInBrowser title="Open Project in Browser" url={image.projectUrl} />
                 <Action

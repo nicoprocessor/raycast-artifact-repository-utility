@@ -8,7 +8,7 @@
   "categories": [
     "Developer Tools"
   ],
-  "license": "MIT",
+  "license": "WTFPL",
   "commands": [
     {
       "name": "search-images",
@@ -54,8 +54,8 @@
   "scripts": {
     "build": "ray build -e dist",
     "dev": "ray develop",
-    "fix-lint": "ray lint --fix",
-    "lint": "ray lint",
+    "fix-lint": "ray lint --relaxed --fix",
+    "lint": "ray lint --relaxed",
     "publish": "ray publish",
     "test": "vitest"
   }

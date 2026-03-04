@@ -1,11 +1,66 @@
-import { Action, ActionPanel, Clipboard, Color, Icon, List, showHUD, showToast, Toast } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Alert,
+  Clipboard,
+  Color,
+  Icon,
+  List,
+  confirmAlert,
+  showHUD,
+  showToast,
+  Toast,
+} from "@raycast/api";
+import { execFile } from "node:child_process";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
-import { RegistryProvider } from "./providers/types";
+import { ProviderKind, RegistryImage, RegistryProvider, VulnerabilitySummary } from "./providers/types";
+import { buildFullArtifactPath } from "./utils/image-reference";
 
 type FavoriteProject = { providerId: string; name: string };
+
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "-";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, index);
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function severityBadge(scanStatus: RegistryImage["scanStatus"], summary: VulnerabilitySummary) {
+  if (scanStatus === "not-scanned") {
+    return { text: "Not scanned", icon: Icon.Clock, color: Color.SecondaryText };
+  }
+  if (summary.critical > 0) return { text: `Critical ${summary.critical}`, icon: Icon.Dot, color: Color.Red };
+  if (summary.high > 0) return { text: `High ${summary.high}`, icon: Icon.Dot, color: Color.Orange };
+  if (summary.medium > 0) return { text: `Medium ${summary.medium}`, icon: Icon.Dot, color: Color.Yellow };
+  if (summary.low > 0) return { text: `Low ${summary.low}`, icon: Icon.Dot, color: Color.Blue };
+  return { text: "Scanned: no vulnerabilities", icon: Icon.CheckCircle, color: Color.Green };
+}
+
+function vulnDetail(summary: VulnerabilitySummary) {
+  return `critical:${summary.critical} · high:${summary.high} · medium:${summary.medium} · low:${summary.low} · unknown:${summary.unknown}`;
+}
+
+function escapeForAppleScript(input: string): string {
+  return input.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+async function runInTerminal(command: string): Promise<void> {
+  const escaped = escapeForAppleScript(command);
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      "osascript",
+      ["-e", 'tell application "Terminal"', "-e", "activate", "-e", `do script "${escaped}"`, "-e", "end tell"],
+      (error) => {
+        if (error) reject(error);
+        else resolve();
+      },
+    );
+  });
+}
 
 function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: string }) {
   const { data, isLoading } = useCachedPromise(
@@ -44,7 +99,172 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
   );
 }
 
-function ProjectRepositoriesDetail(props: { provider: RegistryProvider; projectName: string }) {
+function RepositoryArtifactsDetail(props: {
+  provider: RegistryProvider;
+  providerKind: ProviderKind;
+  providerBaseUrl?: string;
+  projectName: string;
+  repositoryName: string;
+}) {
+  const [searchText, setSearchText] = useState("");
+  const [hideUntagged, setHideUntagged] = useState(false);
+  const { data, isLoading, revalidate } = useCachedPromise(
+    (projectName: string, repositoryName: string, query: string) =>
+      props.provider.listRepositoryArtifacts(projectName, repositoryName, query),
+    [props.projectName, props.repositoryName, searchText],
+    {
+      keepPreviousData: true,
+    },
+  );
+
+  const images = useMemo(
+    () => (data ?? []).filter((image) => (hideUntagged ? image.tag.toLowerCase() !== "untagged" : true)),
+    [data, hideUntagged],
+  );
+
+  async function copyText(content: string, title: string) {
+    await Clipboard.copy(content);
+    await showToast({ style: Toast.Style.Success, title, message: content });
+  }
+
+  async function onPullLocally(fullArtifactPath: string) {
+    const pullCommand = `docker pull ${fullArtifactPath}`;
+    await showToast({ style: Toast.Style.Animated, title: "Starting local pull...", message: pullCommand });
+    await runInTerminal(pullCommand);
+    await showToast({ style: Toast.Style.Success, title: "Docker pull started in Terminal", message: pullCommand });
+  }
+
+  async function runArtifactAction(action: () => Promise<void>, loadingTitle: string, doneTitle: string) {
+    await showToast({ style: Toast.Style.Animated, title: loadingTitle });
+    await action();
+    await revalidate();
+    await showHUD(doneTitle);
+  }
+
+  async function onDeleteTag(image: RegistryImage) {
+    const confirmed = await confirmAlert({
+      title: `Delete tag ${image.tag}?`,
+      message: `${image.repository}:${image.tag}`,
+      primaryAction: { title: "Delete Tag", style: Alert.ActionStyle.Destructive },
+    });
+    if (!confirmed) return;
+    await runArtifactAction(
+      () => props.provider.deleteTag(image.project, image.repositoryName, image.digest, image.tag),
+      "Deleting tag...",
+      "Tag deleted",
+    );
+  }
+
+  async function onDeleteArtifact(image: RegistryImage) {
+    const confirmed = await confirmAlert({
+      title: `Delete artifact ${image.digest.slice(0, 16)}...?`,
+      message: image.repository,
+      primaryAction: { title: "Delete Artifact", style: Alert.ActionStyle.Destructive },
+    });
+    if (!confirmed) return;
+    await runArtifactAction(
+      () => props.provider.deleteArtifact(image.project, image.repositoryName, image.digest),
+      "Deleting artifact...",
+      "Artifact deleted",
+    );
+  }
+
+  async function onTriggerScan(image: RegistryImage) {
+    await runArtifactAction(
+      () => props.provider.triggerScan(image.project, image.repositoryName, image.digest),
+      "Starting scan...",
+      "Scan started",
+    );
+  }
+
+  return (
+    <List
+      isLoading={isLoading}
+      onSearchTextChange={setSearchText}
+      searchBarPlaceholder="Search artifacts in repository"
+      throttle
+      isShowingDetail
+    >
+      {images.length === 0 ? <List.EmptyView title="No artifacts found" /> : null}
+      {images.map((image) => {
+        const severity = severityBadge(image.scanStatus, image.vulnerabilitySummary);
+        const fullArtifactPath = buildFullArtifactPath(
+          props.providerKind,
+          image.repository,
+          image.tag,
+          props.providerBaseUrl,
+        );
+        return (
+          <List.Item
+            key={image.id}
+            icon={Icon.Box}
+            title={image.tag}
+            subtitle={image.repository}
+            accessories={[{ icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text }]}
+            detail={
+              <List.Item.Detail
+                markdown={[
+                  `# ${image.repository}:${image.tag}`,
+                  `- **Provider:** ${image.providerLabel}`,
+                  `- **Project:** ${image.project}`,
+                  `- **Digest:** \`${image.digest}\``,
+                  `- **Size:** ${formatBytes(image.sizeBytes)}`,
+                  `- **Pushed At:** ${image.pushedAt ? new Date(image.pushedAt).toLocaleString() : "-"}`,
+                  `- **Scan Status:** ${image.scanStatus}`,
+                  `- **Vulnerabilities:** ${vulnDetail(image.vulnerabilitySummary)}`,
+                ].join("\n")}
+              />
+            }
+            actions={
+              <ActionPanel>
+                <Action title="Copy Tag" onAction={() => copyText(image.tag, "Tag copied")} />
+                <Action
+                  title="Copy Full Artifact Path"
+                  shortcut={{ modifiers: ["cmd"], key: "enter" }}
+                  onAction={() => copyText(fullArtifactPath, "Full artifact path copied")}
+                />
+                <Action
+                  title="Pull Locally (Docker)"
+                  icon={Icon.Download}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
+                  onAction={() => onPullLocally(fullArtifactPath)}
+                />
+                <Action title="Copy Digest" onAction={() => copyText(image.digest, "Digest copied")} />
+                <Action.OpenInBrowser title="Open Artifact in Browser" url={image.artifactUrl} />
+                <Action.OpenInBrowser title="Open Project in Browser" url={image.projectUrl} />
+                <Action
+                  title={hideUntagged ? "Show Untagged Images" : "Hide Untagged Images"}
+                  icon={Icon.Filter}
+                  onAction={() => setHideUntagged((value) => !value)}
+                />
+                <Action title="Trigger Scan" icon={Icon.MagnifyingGlass} onAction={() => onTriggerScan(image)} />
+                <Action
+                  title="Delete Tag"
+                  style={Action.Style.Destructive}
+                  icon={Icon.Trash}
+                  onAction={() => onDeleteTag(image)}
+                />
+                <Action
+                  title="Delete Artifact"
+                  style={Action.Style.Destructive}
+                  icon={Icon.Trash}
+                  onAction={() => onDeleteArtifact(image)}
+                />
+              </ActionPanel>
+            }
+          />
+        );
+      })}
+    </List>
+  );
+}
+
+function ProjectRepositoriesDetail(props: {
+  provider: RegistryProvider;
+  providerKind: ProviderKind;
+  providerBaseUrl?: string;
+  projectName: string;
+}) {
   const [searchText, setSearchText] = useState("");
   const { data, isLoading } = useCachedPromise(
     (projectName: string, query: string) => props.provider.listProjectRepositories(projectName, query),
@@ -105,6 +325,18 @@ function ProjectRepositoriesDetail(props: { provider: RegistryProvider; projectN
           ]}
           actions={
             <ActionPanel>
+              <Action.Push
+                title="Inspect Artifacts"
+                target={
+                  <RepositoryArtifactsDetail
+                    provider={props.provider}
+                    providerKind={props.providerKind}
+                    providerBaseUrl={props.providerBaseUrl}
+                    projectName={props.projectName}
+                    repositoryName={repository.name}
+                  />
+                }
+              />
               <Action.OpenInBrowser title="Open Repository in Browser" url={repository.url} />
               <Action.CopyToClipboard title="Copy Repository Name" content={repository.name} />
               <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(repository.name)} />
@@ -202,7 +434,8 @@ export default function Command() {
         const favorite = favorites.some(
           (entry) => entry.providerId === project.providerId && entry.name === project.name,
         );
-        const client = clients.find((entry) => entry.config.id === project.providerId)?.client;
+        const providerEntry = clients.find((entry) => entry.config.id === project.providerId);
+        const client = providerEntry?.client;
         return (
           <List.Item
             key={project.id}
@@ -219,7 +452,14 @@ export default function Command() {
                   <>
                     <Action.Push
                       title="View Project Repositories"
-                      target={<ProjectRepositoriesDetail provider={client} projectName={project.name} />}
+                      target={
+                        <ProjectRepositoriesDetail
+                          provider={client}
+                          providerKind={providerEntry.config.kind}
+                          providerBaseUrl={providerEntry.config.baseUrl}
+                          projectName={project.name}
+                        />
+                      }
                     />
                     <Action.Push
                       title="View Project Members"
