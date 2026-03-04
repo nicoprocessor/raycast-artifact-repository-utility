@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
 import { RegistryImage, VulnerabilitySummary } from "./providers/types";
+import { buildFullArtifactPath } from "./utils/image-reference";
 
 function formatBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return "-";
@@ -38,17 +39,6 @@ function severityBadge(scanStatus: RegistryImage["scanStatus"], summary: Vulnera
 
 function vulnDetail(summary: VulnerabilitySummary) {
   return `critical:${summary.critical} · high:${summary.high} · medium:${summary.medium} · low:${summary.low} · unknown:${summary.unknown}`;
-}
-
-function registryHost(kind: "private-harbor" | "docker-hub", baseUrl?: string): string {
-  if (kind === "docker-hub") return "docker.io";
-  if (!baseUrl) return "";
-  try {
-    const normalized = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
-    return new URL(normalized).host;
-  } catch {
-    return baseUrl.replace(/^https?:\/\//i, "").split("/")[0] ?? "";
-  }
 }
 
 type SearchImagesResult = {
@@ -236,8 +226,12 @@ export default function Command() {
       {images.map((image) => {
         const severity = severityBadge(image.scanStatus, image.vulnerabilitySummary);
         const provider = providers.find((entry) => entry.config.id === image.providerId);
-        const host = provider ? registryHost(provider.config.kind, provider.config.baseUrl) : "";
-        const fullArtifactPath = host ? `${host}/${image.repository}:${image.tag}` : `${image.repository}:${image.tag}`;
+        const fullArtifactPath = buildFullArtifactPath(
+          provider?.config.kind ?? "private-harbor",
+          image.repository,
+          image.tag,
+          provider?.config.baseUrl,
+        );
         return (
           <List.Item
             key={image.id}
