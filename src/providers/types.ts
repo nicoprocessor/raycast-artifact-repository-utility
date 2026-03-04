@@ -7,7 +7,7 @@ export type VulnerabilitySummary = {
   critical: number;
 };
 
-export type ProviderKind = "private-arbor" | "docker-hub";
+export type ProviderKind = "private-harbor" | "docker-hub";
 
 export type ProviderConfig = {
   id: string;

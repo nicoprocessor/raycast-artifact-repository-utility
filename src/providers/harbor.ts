@@ -66,7 +66,7 @@ export class HarborProvider implements RegistryProvider {
   private static normalizeBaseUrl(baseUrl?: string): string {
     const raw = (baseUrl ?? "").trim();
     if (!raw) {
-      throw new Error("Invalid Harbor base URL. Example: https://registry.invisiblefarm.it");
+      throw new Error("Invalid Harbor base URL. Example: https://registry.acme.inc");
     }
 
     const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -74,7 +74,7 @@ export class HarborProvider implements RegistryProvider {
     try {
       parsed = new URL(withProtocol);
     } catch {
-      throw new Error("Invalid Harbor base URL. Example: https://registry.invisiblefarm.it");
+      throw new Error("Invalid Harbor base URL. Example: https://registry.acme.inc");
     }
 
     return `${parsed.protocol}//${parsed.host}`;

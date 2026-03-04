@@ -5,7 +5,7 @@ import { ProviderConfig, RegistryProvider } from "./types";
 
 export function providerIcon(kind: ProviderConfig["kind"]): string {
   switch (kind) {
-    case "private-arbor":
+    case "private-harbor":
       return "providers/private-harbor.png";
     case "docker-hub":
       return "providers/docker-hub.png";
@@ -16,7 +16,7 @@ export function providerIcon(kind: ProviderConfig["kind"]): string {
 
 export function createProvider(config: ProviderConfig): RegistryProvider {
   switch (config.kind) {
-    case "private-arbor":
+    case "private-harbor":
       return new HarborProvider(config);
     case "docker-hub":
       return new DockerHubProvider(config);

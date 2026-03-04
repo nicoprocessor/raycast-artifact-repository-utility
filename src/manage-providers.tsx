@@ -7,12 +7,12 @@ import { ProviderConfig, ProviderKind } from "./providers/types";
 
 function buildProviderLabel(kind: ProviderKind, customLabel?: string): string {
   if (customLabel?.trim()) return customLabel.trim();
-  return kind === "private-arbor" ? "Private Harbor" : "Docker Hub";
+  return kind === "private-harbor" ? "Private Harbor" : "Docker Hub";
 }
 
 export function AddProviderForm(props: { onSaved?: () => Promise<void> | void }) {
   const { pop } = useNavigation();
-  const [kind, setKind] = useState<ProviderKind>("private-arbor");
+  const [kind, setKind] = useState<ProviderKind>("private-harbor");
   const [isLoading, setIsLoading] = useState(false);
 
   async function onSubmit(values: {
@@ -26,7 +26,7 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
   }) {
     setIsLoading(true);
     try {
-      if (values.kind === "private-arbor" && !values.baseUrl?.trim()) {
+      if (values.kind === "private-harbor" && !values.baseUrl?.trim()) {
         throw new Error("Registry Base URL is required for Private Harbor.");
       }
       if (!values.username?.trim() || !values.password?.trim()) {
@@ -37,10 +37,10 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
         id: `${Date.now()}`,
         kind: values.kind,
         label: buildProviderLabel(values.kind, values.label),
-        baseUrl: values.kind === "private-arbor" ? values.baseUrl?.trim() : undefined,
+        baseUrl: values.kind === "private-harbor" ? values.baseUrl?.trim() : undefined,
         username: values.username?.trim(),
         password: values.password,
-        defaultProject: values.kind === "private-arbor" ? values.defaultProject?.trim() : undefined,
+        defaultProject: values.kind === "private-harbor" ? values.defaultProject?.trim() : undefined,
         defaultNamespace: values.kind === "docker-hub" ? values.defaultNamespace?.trim() : undefined,
       };
 
@@ -70,18 +70,18 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
       }
     >
       <Form.Dropdown id="kind" title="Provider" value={kind} onChange={(value) => setKind(value as ProviderKind)}>
-        <Form.Dropdown.Item value="private-arbor" title="Private Harbor" icon={providerIcon("private-arbor")} />
+        <Form.Dropdown.Item value="private-harbor" title="Private Harbor" icon={providerIcon("private-harbor")} />
         <Form.Dropdown.Item value="docker-hub" title="Docker Hub (Beta)" icon={providerIcon("docker-hub")} />
       </Form.Dropdown>
       <Form.TextField
         id="label"
         title="Display Name"
-        placeholder={kind === "private-arbor" ? "Private Harbor" : "Docker Hub"}
+        placeholder={kind === "private-harbor" ? "Private Harbor" : "Docker Hub"}
       />
-      {kind === "private-arbor" ? (
+      {kind === "private-harbor" ? (
         <>
-          <Form.Description text="For Harbor, use only the base URL. Example: https://registry.invisiblefarm.it (without /harbor)." />
-          <Form.TextField id="baseUrl" title="Registry Base URL" placeholder="https://registry.invisiblefarm.it" />
+          <Form.Description text="For Private Harbor Registry, use only the base URL. Example: https://registry.acme.inc (without /harbor)." />
+          <Form.TextField id="baseUrl" title="Registry Base URL" placeholder="https://registry.acme.inc" />
           <Form.TextField id="username" title="Registry Username" placeholder="username" />
           <Form.PasswordField id="password" title="Registry Password / Token" />
           <Form.TextField id="defaultProject" title="Default Project (Optional)" placeholder="project-name" />
@@ -114,7 +114,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
   }) {
     setIsLoading(true);
     try {
-      if (values.kind === "private-arbor" && !values.baseUrl?.trim()) {
+      if (values.kind === "private-harbor" && !values.baseUrl?.trim()) {
         throw new Error("Registry Base URL is required for Private Harbor.");
       }
       if (!values.username?.trim()) {
@@ -130,10 +130,10 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
         id: props.provider.id,
         kind: values.kind,
         label: buildProviderLabel(values.kind, values.label),
-        baseUrl: values.kind === "private-arbor" ? values.baseUrl?.trim() : undefined,
+        baseUrl: values.kind === "private-harbor" ? values.baseUrl?.trim() : undefined,
         username: values.username?.trim(),
         password: nextPassword,
-        defaultProject: values.kind === "private-arbor" ? values.defaultProject?.trim() : undefined,
+        defaultProject: values.kind === "private-harbor" ? values.defaultProject?.trim() : undefined,
         defaultNamespace: values.kind === "docker-hub" ? values.defaultNamespace?.trim() : undefined,
       };
 
@@ -163,18 +163,18 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
       }
     >
       <Form.Dropdown id="kind" title="Provider" value={kind} onChange={(value) => setKind(value as ProviderKind)}>
-        <Form.Dropdown.Item value="private-arbor" title="Private Harbor" icon={providerIcon("private-arbor")} />
+        <Form.Dropdown.Item value="private-harbor" title="Private Harbor" icon={providerIcon("private-harbor")} />
         <Form.Dropdown.Item value="docker-hub" title="Docker Hub (Beta)" icon={providerIcon("docker-hub")} />
       </Form.Dropdown>
       <Form.TextField id="label" title="Display Name" defaultValue={props.provider.label} />
-      {kind === "private-arbor" ? (
+      {kind === "private-harbor" ? (
         <>
-          <Form.Description text="For Harbor, use only the base URL. Example: https://registry.invisiblefarm.it (without /harbor)." />
+          <Form.Description text="For ACME Inc Harbor, use only the base URL. Example: https://registry.acme.inc (without /harbor)." />
           <Form.TextField
             id="baseUrl"
             title="Registry Base URL"
             defaultValue={props.provider.baseUrl}
-            placeholder="https://registry.invisiblefarm.it"
+            placeholder="https://registry.acme.inc"
           />
           <Form.TextField
             id="username"
@@ -287,7 +287,7 @@ export default function Command() {
           key={provider.id}
           icon={providerIcon(provider.kind)}
           title={provider.label}
-          subtitle={provider.kind === "private-arbor" ? provider.baseUrl : "Docker Hub"}
+          subtitle={provider.kind === "private-harbor" ? provider.baseUrl : "Docker Hub"}
           accessories={[
             provider.kind === "docker-hub" ? { tag: "Beta" } : { text: "" },
             provider.password ? { text: "••••••••" } : { text: "" },

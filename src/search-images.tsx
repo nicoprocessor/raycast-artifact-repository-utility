@@ -1,4 +1,16 @@
-import { Action, ActionPanel, Alert, Color, confirmAlert, Icon, List, showHUD, showToast, Toast } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Alert,
+  Clipboard,
+  Color,
+  confirmAlert,
+  Icon,
+  List,
+  showHUD,
+  showToast,
+  Toast,
+} from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
@@ -28,9 +40,31 @@ function vulnDetail(summary: VulnerabilitySummary) {
   return `critical:${summary.critical} · high:${summary.high} · medium:${summary.medium} · low:${summary.low} · unknown:${summary.unknown}`;
 }
 
+function registryHost(kind: "private-harbor" | "docker-hub", baseUrl?: string): string {
+  if (kind === "docker-hub") return "docker.io";
+  if (!baseUrl) return "";
+  try {
+    const normalized = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+    return new URL(normalized).host;
+  } catch {
+    return baseUrl.replace(/^https?:\/\//i, "").split("/")[0] ?? "";
+  }
+}
+
+type SearchImagesResult = {
+  images: RegistryImage[];
+  providers: Awaited<ReturnType<typeof getProviderClients>>;
+  failures: string[];
+  activeQuery: string;
+};
+
 export default function Command() {
   const [searchText, setSearchText] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
+  const { value: lastSearchQueryRaw, setValue: setLastSearchQueryRaw } = useLocalStorage<string>(
+    "search-images-last-query",
+    "",
+  );
   const { value: hideUntaggedRaw, setValue: setHideUntaggedRaw } = useLocalStorage<string>(
     "search-images-hide-untagged",
     "false",
@@ -38,14 +72,20 @@ export default function Command() {
   const hideUntagged = hideUntaggedRaw === "true";
 
   const { data, isLoading, error, revalidate } = useCachedPromise(
-    async (query: string, selectedProviderId: string) => {
-      if (!query.trim())
-        return { images: [] as RegistryImage[], providers: await getProviderClients(), failures: [] as string[] };
+    async (query: string, selectedProviderId: string, lastQuery?: string): Promise<SearchImagesResult> => {
+      const effectiveQuery = query.trim() || (lastQuery?.trim() ?? "");
+      if (!effectiveQuery)
+        return {
+          images: [] as RegistryImage[],
+          providers: await getProviderClients(),
+          failures: [] as string[],
+          activeQuery: "",
+        };
       const providers = await getProviderClients(selectedProviderId === "all" ? undefined : selectedProviderId);
       const results = await Promise.all(
         providers.map(async ({ config, client }) => {
           try {
-            const images = await client.searchImages(query);
+            const images = await client.searchImages(effectiveQuery);
             return {
               images: images.map((image) => ({ ...image, providerLabel: config.label })),
               failure: undefined as string | undefined,
@@ -63,9 +103,10 @@ export default function Command() {
           .sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? "")),
         providers,
         failures: results.map((result) => result.failure).filter((item): item is string => Boolean(item)),
+        activeQuery: effectiveQuery,
       };
     },
-    [searchText, providerFilter],
+    [searchText, providerFilter, lastSearchQueryRaw],
     { keepPreviousData: true },
   );
 
@@ -75,6 +116,15 @@ export default function Command() {
     [data, hideUntagged],
   );
   const failures = useMemo(() => data?.failures ?? [], [data]);
+  const activeQuery = useMemo(() => data?.activeQuery ?? "", [data]);
+
+  function handleSearchTextChange(text: string) {
+    setSearchText(text);
+    const trimmed = text.trim();
+    if (trimmed) {
+      void setLastSearchQueryRaw(trimmed);
+    }
+  }
 
   async function runAction(action: () => Promise<void>, loadingTitle: string, doneTitle: string) {
     await showToast({ style: Toast.Style.Animated, title: loadingTitle });
@@ -130,6 +180,11 @@ export default function Command() {
     );
   }
 
+  async function copyText(content: string, title: string) {
+    await Clipboard.copy(content);
+    await showToast({ style: Toast.Style.Success, title, message: content });
+  }
+
   const providerDropdown = (
     <List.Dropdown tooltip="Filter Provider" value={providerFilter} onChange={setProviderFilter}>
       <List.Dropdown.Item title="All Providers" value="all" />
@@ -142,7 +197,7 @@ export default function Command() {
   return (
     <List
       isLoading={isLoading}
-      onSearchTextChange={setSearchText}
+      onSearchTextChange={handleSearchTextChange}
       searchBarPlaceholder="Search tag / image / project / digest"
       searchBarAccessory={providerDropdown}
       throttle
@@ -165,7 +220,7 @@ export default function Command() {
           }
         />
       ) : null}
-      {!searchText.trim() && providers.length > 0 ? (
+      {!searchText.trim() && providers.length > 0 && !activeQuery ? (
         <List.EmptyView title="Type to search" description="Default search runs across all configured providers" />
       ) : null}
       {searchText.trim() && images.length === 0 && failures.length > 0 ? (
@@ -180,12 +235,13 @@ export default function Command() {
 
       {images.map((image) => {
         const severity = severityBadge(image.scanStatus, image.vulnerabilitySummary);
+        const provider = providers.find((entry) => entry.config.id === image.providerId);
+        const host = provider ? registryHost(provider.config.kind, provider.config.baseUrl) : "";
+        const fullArtifactPath = host ? `${host}/${image.repository}:${image.tag}` : `${image.repository}:${image.tag}`;
         return (
           <List.Item
             key={image.id}
-            icon={providerIcon(
-              providers.find((entry) => entry.config.id === image.providerId)?.config.kind ?? "private-arbor",
-            )}
+            icon={providerIcon(provider?.config.kind ?? "private-harbor")}
             title={image.tag}
             subtitle={image.repository}
             accessories={[{ icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text }]}
@@ -205,8 +261,13 @@ export default function Command() {
             }
             actions={
               <ActionPanel>
-                <Action.CopyToClipboard title="Copy Image Reference" content={`${image.repository}:${image.tag}`} />
-                <Action.CopyToClipboard title="Copy Digest" content={image.digest} />
+                <Action title="Copy Tag" onAction={() => copyText(image.tag, "Tag copied")} />
+                <Action
+                  title="Copy Full Artifact Path"
+                  shortcut={{ modifiers: ["cmd"], key: "enter" }}
+                  onAction={() => copyText(fullArtifactPath, "Full artifact path copied")}
+                />
+                <Action title="Copy Digest" onAction={() => copyText(image.digest, "Digest copied")} />
                 <Action.OpenInBrowser title="Open Artifact in Browser" url={image.artifactUrl} />
                 <Action.OpenInBrowser title="Open Project in Browser" url={image.projectUrl} />
                 <Action
