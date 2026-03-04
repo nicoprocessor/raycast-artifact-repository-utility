@@ -1,17 +1,17 @@
 # Raycast Artifact Repository Utility
 
-Raycast extension per lavorare con registry privati, con supporto multi-provider.
+Raycast extension for working with private registries, with multi-provider support.
 
 ## Workflow
 
-- **Manage Providers**: aggiungi uno o piu provider (Private Harbor, Docker Hub Beta).
-- **Search Images**: cerca su tutti i provider per default; puoi filtrare per provider dal dropdown.
-- **Search Projects**: flusso per provider o aggregato, con view members dove disponibile.
-- **Favorite Projects**: accesso rapido ai preferiti.
+- **Manage Providers**: add one or more providers (Private Harbor, Docker Hub Beta).
+- **Search Images**: search across all providers by default; filter by provider from the dropdown.
+- **Search Projects**: provider-specific or aggregated project flow, with member view where available.
+- **Favorite Projects**: quick access to saved favorites.
 
-## Note funzionali
+## Functional Notes
 
-- Se nessun provider e configurato, i comandi mostrano onboarding rapido (⌘N).
-- In Search Images, la severita non mostra check verde quando lo scan non e ancora stato eseguito.
-- Azioni disponibili su immagini: copy, open artifact/project, trigger scan, delete tag/artifact.
-- Docker Hub e in beta (alcuni endpoint come scan/delete possono non essere disponibili via API).
+- If no provider is configured, commands show a quick onboarding flow (⌘N).
+- In Search Images, severity does not show a green check when a scan has not been run yet.
+- Available image actions: copy, open artifact/project, trigger scan, delete tag/artifact.
+- Docker Hub support is in beta (some endpoints like scan/delete may be unavailable via API).
