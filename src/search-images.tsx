@@ -1,23 +1,11 @@
-import {
-  Action,
-  ActionPanel,
-  Alert,
-  Clipboard,
-  Color,
-  confirmAlert,
-  Icon,
-  List,
-  showHUD,
-  showToast,
-  Toast,
-} from "@raycast/api";
-import { execFile } from "node:child_process";
+import { Action, ActionPanel, Alert, Clipboard, Color, confirmAlert, Icon, List, showToast, Toast } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
 import { RegistryImage, VulnerabilitySummary } from "./providers/types";
 import { buildFullArtifactPath } from "./utils/image-reference";
+import { runInDefaultTerminal } from "./utils/terminal";
 
 function formatBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return "-";
@@ -39,25 +27,13 @@ function severityBadge(scanStatus: RegistryImage["scanStatus"], summary: Vulnera
 }
 
 function vulnDetail(summary: VulnerabilitySummary) {
-  return `critical:${summary.critical} · high:${summary.high} · medium:${summary.medium} · low:${summary.low} · unknown:${summary.unknown}`;
-}
-
-function escapeForAppleScript(input: string): string {
-  return input.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-async function runInTerminal(command: string): Promise<void> {
-  const escaped = escapeForAppleScript(command);
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      "osascript",
-      ["-e", 'tell application "Terminal"', "-e", "activate", "-e", `do script "${escaped}"`, "-e", "end tell"],
-      (error) => {
-        if (error) reject(error);
-        else resolve();
-      },
-    );
-  });
+  return [
+    "1. **Critical:** " + summary.critical,
+    "2. **High:** " + summary.high,
+    "3. **Medium:** " + summary.medium,
+    "4. **Low:** " + summary.low,
+    "5. **Unknown:** " + summary.unknown,
+  ].join("\n");
 }
 
 type SearchImagesResult = {
@@ -139,7 +115,7 @@ export default function Command() {
     await showToast({ style: Toast.Style.Animated, title: loadingTitle });
     await action();
     await revalidate();
-    await showHUD(doneTitle);
+    await showToast({ style: Toast.Style.Success, title: doneTitle });
   }
 
   async function onDeleteTag(image: RegistryImage) {
@@ -197,8 +173,12 @@ export default function Command() {
   async function onPullLocally(fullArtifactPath: string) {
     const pullCommand = `docker pull ${fullArtifactPath}`;
     await showToast({ style: Toast.Style.Animated, title: "Starting local pull...", message: pullCommand });
-    await runInTerminal(pullCommand);
-    await showToast({ style: Toast.Style.Success, title: "Docker pull started in Terminal", message: pullCommand });
+    await runInDefaultTerminal(pullCommand);
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Docker pull started in your terminal",
+      message: pullCommand,
+    });
   }
 
   const providerDropdown = (
@@ -271,11 +251,13 @@ export default function Command() {
                   `# ${image.repository}:${image.tag}`,
                   `- **Provider:** ${image.providerLabel}`,
                   `- **Project:** ${image.project}`,
-                  `- **Digest:** \`${image.digest}\``,
                   `- **Size:** ${formatBytes(image.sizeBytes)}`,
+                  `- **Platforms:** ${image.platforms?.length ? image.platforms.join(", ") : "-"}`,
                   `- **Pushed At:** ${image.pushedAt ? new Date(image.pushedAt).toLocaleString() : "-"}`,
                   `- **Scan Status:** ${image.scanStatus}`,
-                  `- **Vulnerabilities:** ${vulnDetail(image.vulnerabilitySummary)}`,
+                  "",
+                  "## Vulnerabilities",
+                  vulnDetail(image.vulnerabilitySummary),
                 ].join("\n")}
               />
             }

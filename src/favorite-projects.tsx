@@ -1,9 +1,22 @@
-import { Action, ActionPanel, Icon, List } from "@raycast/api";
+import { Action, ActionPanel, Icon, List, showToast, Toast } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo } from "react";
 import { getProviderClients, providerIcon } from "./providers";
+import { ProviderKind, RegistryProvider } from "./providers/types";
+import { ProjectRepositoriesDetail } from "./search-projects";
 
 type FavoriteProject = { providerId: string; name: string };
+type FavoriteProjectItem = {
+  id: string;
+  providerId: string;
+  providerLabel: string;
+  name: string;
+  repoCount?: number;
+  projectUrl: string;
+  providerKind: ProviderKind;
+  provider: RegistryProvider;
+  providerBaseUrl?: string;
+};
 
 export default function Command() {
   const { value: favoriteRaw, setValue: setFavoriteRaw } = useLocalStorage<string>("favorite-projects", "[]");
@@ -35,14 +48,19 @@ export default function Command() {
               .filter((project) =>
                 parsedFavorites.some((fav) => fav.providerId === config.id && fav.name === project.name),
               )
-              .map((project) => ({ ...project, providerKind: config.kind }));
+              .map((project) => ({
+                ...project,
+                providerKind: config.kind,
+                provider: client,
+                providerBaseUrl: config.baseUrl,
+              }));
           } catch {
             return [];
           }
         }),
       );
 
-      return projects.flat();
+      return projects.flat() as FavoriteProjectItem[];
     },
     [favoriteRaw],
   );
@@ -51,6 +69,7 @@ export default function Command() {
     await setFavoriteRaw(
       JSON.stringify(favorites.filter((item) => !(item.providerId === providerId && item.name === name))),
     );
+    await showToast({ style: Toast.Style.Success, title: "Removed from favorites", message: name });
     await revalidate();
   }
 
@@ -65,6 +84,18 @@ export default function Command() {
           accessories={project.repoCount !== undefined ? [{ text: `${project.repoCount} repos` }] : []}
           actions={
             <ActionPanel>
+              <Action.Push
+                title="View Project Repositories"
+                target={
+                  <ProjectRepositoriesDetail
+                    providerId={project.providerId}
+                    provider={project.provider}
+                    providerKind={project.providerKind}
+                    providerBaseUrl={project.providerBaseUrl}
+                    projectName={project.name}
+                  />
+                }
+              />
               <Action.OpenInBrowser title="Open Project in Browser" url={project.projectUrl} />
               <Action
                 title="Remove from Favorites"

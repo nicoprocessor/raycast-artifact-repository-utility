@@ -20,7 +20,7 @@ type DockerTag = {
   last_updated?: string;
   digest?: string;
   full_size?: number;
-  images?: Array<{ digest?: string; size?: number }>;
+  images?: Array<{ digest?: string; size?: number; architecture?: string; os?: string; variant?: string }>;
 };
 
 const EMPTY_VULNERABILITY: VulnerabilitySummary = {
@@ -157,6 +157,19 @@ export class DockerHubProvider implements RegistryProvider {
     const digest = tag.digest ?? tag.images?.[0]?.digest ?? "-";
     const size = tag.full_size ?? tag.images?.[0]?.size;
     const repoFullName = `${namespace}/${repositoryName}`;
+    const platforms = Array.from(
+      new Set(
+        (tag.images ?? [])
+          .map((image) =>
+            image.os && image.architecture
+              ? image.variant
+                ? `${image.os}/${image.architecture}/${image.variant}`
+                : `${image.os}/${image.architecture}`
+              : undefined,
+          )
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
 
     return {
       id: `${this.config.id}:${repoFullName}:${tag.name}`,
@@ -169,6 +182,7 @@ export class DockerHubProvider implements RegistryProvider {
       digest,
       pushedAt: tag.last_updated,
       sizeBytes: size,
+      platforms,
       scanStatus: "not-scanned",
       vulnerabilitySummary: { ...EMPTY_VULNERABILITY },
       projectUrl: `https://hub.docker.com/r/${encodeURIComponent(namespace)}/${encodeURIComponent(repositoryName)}`,

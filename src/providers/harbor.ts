@@ -8,6 +8,7 @@ import {
   RegistryProvider,
   VulnerabilitySummary,
 } from "./types";
+import { parseHarborVulnerabilitySummary } from "../utils/vulnerability-parsing";
 
 type HarborSearchResponse = {
   repository?: Array<{
@@ -34,22 +35,15 @@ type HarborArtifact = {
   size?: number;
   push_time?: string;
   tags?: Array<{ name: string }>;
-  scan_overview?: Record<string, { summary?: Record<string, number> }>;
+  extra_attrs?: { os?: string; architecture?: string; variant?: string };
+  references?: Array<{ platform?: { os?: string; architecture?: string; variant?: string } }>;
+  scan_overview?: Record<string, unknown>;
 };
 
 type HarborRepository = {
   name: string;
   artifact_count?: number;
   update_time?: string;
-};
-
-const EMPTY_VULNERABILITY: VulnerabilitySummary = {
-  unknown: 0,
-  none: 0,
-  low: 0,
-  medium: 0,
-  high: 0,
-  critical: 0,
 };
 
 export class HarborProvider implements RegistryProvider {
@@ -242,6 +236,7 @@ export class HarborProvider implements RegistryProvider {
       .flatMap((artifact) => {
         const tags = artifact.tags?.length ? artifact.tags : [{ name: "untagged" }];
         const vulnerabilitySummary = this.parseScanSummary(artifact.scan_overview);
+        const platforms = this.extractPlatforms(artifact);
         const repoFullName = `${project}/${repository}`;
 
         return tags.map((tag) => ({
@@ -255,6 +250,7 @@ export class HarborProvider implements RegistryProvider {
           digest: artifact.digest,
           pushedAt: artifact.push_time,
           sizeBytes: artifact.size,
+          platforms,
           scanStatus: artifact.scan_overview ? ("scanned" as const) : ("not-scanned" as const),
           vulnerabilitySummary,
           projectUrl: `${this.baseUrl}/harbor/projects/${encodeURIComponent(project)}/repositories`,
@@ -275,20 +271,26 @@ export class HarborProvider implements RegistryProvider {
   }
 
   private parseScanSummary(scanOverview?: HarborArtifact["scan_overview"]): VulnerabilitySummary {
-    if (!scanOverview) return { ...EMPTY_VULNERABILITY };
+    return parseHarborVulnerabilitySummary(scanOverview);
+  }
 
-    const summary: VulnerabilitySummary = { ...EMPTY_VULNERABILITY };
-    for (const scannerReport of Object.values(scanOverview)) {
-      const scannerSummary = scannerReport.summary ?? {};
-      for (const [key, count] of Object.entries(scannerSummary)) {
-        const normalized = key.toLowerCase() as keyof VulnerabilitySummary;
-        if (normalized in summary) {
-          summary[normalized] += count;
-        }
-      }
+  private extractPlatforms(artifact: HarborArtifact): string[] {
+    const set = new Set<string>();
+    const format = (os?: string, architecture?: string, variant?: string) => {
+      if (!os || !architecture) return undefined;
+      return variant ? `${os}/${architecture}/${variant}` : `${os}/${architecture}`;
+    };
+
+    const base = format(artifact.extra_attrs?.os, artifact.extra_attrs?.architecture, artifact.extra_attrs?.variant);
+    if (base) set.add(base);
+
+    for (const reference of artifact.references ?? []) {
+      const platform = reference.platform;
+      const value = format(platform?.os, platform?.architecture, platform?.variant);
+      if (value) set.add(value);
     }
 
-    return summary;
+    return Array.from(set);
   }
 
   private async fetchNoContent(path: string, method: "DELETE" | "POST"): Promise<void> {

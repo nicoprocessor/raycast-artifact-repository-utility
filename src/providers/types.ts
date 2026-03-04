@@ -31,6 +31,7 @@ export type RegistryImage = {
   digest: string;
   pushedAt?: string;
   sizeBytes?: number;
+  platforms?: string[];
   scanStatus: "not-scanned" | "scanned";
   vulnerabilitySummary: VulnerabilitySummary;
   projectUrl: string;

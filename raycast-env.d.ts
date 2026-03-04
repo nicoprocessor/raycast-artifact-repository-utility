@@ -19,6 +19,8 @@ declare namespace Preferences {
   export type SearchProjects = ExtensionPreferences & {}
   /** Preferences accessible in the `favorite-projects` command */
   export type FavoriteProjects = ExtensionPreferences & {}
+  /** Preferences accessible in the `favorite-repositories` command */
+  export type FavoriteRepositories = ExtensionPreferences & {}
   /** Preferences accessible in the `manage-providers` command */
   export type ManageProviders = ExtensionPreferences & {}
 }
@@ -30,6 +32,8 @@ declare namespace Arguments {
   export type SearchProjects = {}
   /** Arguments passed to the `favorite-projects` command */
   export type FavoriteProjects = {}
+  /** Arguments passed to the `favorite-repositories` command */
+  export type FavoriteRepositories = {}
   /** Arguments passed to the `manage-providers` command */
   export type ManageProviders = {}
 }

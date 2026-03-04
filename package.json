@@ -1,36 +1,50 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "raycast-artifact-repository-utility",
-  "title": "Raycast Artifact Repository Utility",
+  "title": "Artifact Registry Explorer",
   "description": "Search images and artifacts across private container registries (starting with Harbor).",
   "icon": "icon.png",
   "author": "nicoprocessor",
   "categories": [
     "Developer Tools"
   ],
-  "license": "WTFPL",
+  "license": "MIT",
+  "platforms": [
+    "macOS"
+  ],
   "commands": [
     {
       "name": "search-images",
       "title": "Search Images",
+      "subtitle": "Artifact Registries",
       "description": "Search across all providers by default, or filter by provider",
       "mode": "view"
     },
     {
       "name": "search-projects",
       "title": "Search Projects",
+      "subtitle": "Artifact Registries",
       "description": "Search projects and inspect members for selected provider(s)",
       "mode": "view"
     },
     {
       "name": "favorite-projects",
       "title": "Favorite Projects",
+      "subtitle": "Artifact Registries",
       "description": "Quick access to favorite projects",
+      "mode": "view"
+    },
+    {
+      "name": "favorite-repositories",
+      "title": "Favorite Repositories",
+      "subtitle": "Artifact Registries",
+      "description": "Quick access to favorite repositories and latest tags",
       "mode": "view"
     },
     {
       "name": "manage-providers",
       "title": "Manage Providers",
+      "subtitle": "Artifact Registries",
       "description": "Add and manage registry providers (Private Harbor, Docker Hub)",
       "mode": "view"
     }
@@ -54,8 +68,8 @@
   "scripts": {
     "build": "ray build -e dist",
     "dev": "ray develop",
-    "fix-lint": "ray lint --relaxed --fix",
-    "lint": "ray lint --relaxed",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
     "publish": "ray publish",
     "test": "vitest"
   }

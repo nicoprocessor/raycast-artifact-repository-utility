@@ -1,25 +1,14 @@
-import {
-  Action,
-  ActionPanel,
-  Alert,
-  Clipboard,
-  Color,
-  Icon,
-  List,
-  confirmAlert,
-  showHUD,
-  showToast,
-  Toast,
-} from "@raycast/api";
-import { execFile } from "node:child_process";
+import { Action, ActionPanel, Alert, Clipboard, Color, Icon, List, confirmAlert, showToast, Toast } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
 import { ProviderKind, RegistryImage, RegistryProvider, VulnerabilitySummary } from "./providers/types";
 import { buildFullArtifactPath } from "./utils/image-reference";
+import { runInDefaultTerminal } from "./utils/terminal";
 
 type FavoriteProject = { providerId: string; name: string };
+type FavoriteRepository = { providerId: string; projectName: string; repositoryName: string };
 
 function formatBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return "-";
@@ -41,25 +30,18 @@ function severityBadge(scanStatus: RegistryImage["scanStatus"], summary: Vulnera
 }
 
 function vulnDetail(summary: VulnerabilitySummary) {
-  return `critical:${summary.critical} · high:${summary.high} · medium:${summary.medium} · low:${summary.low} · unknown:${summary.unknown}`;
+  return [
+    "1. **Critical:** " + summary.critical,
+    "2. **High:** " + summary.high,
+    "3. **Medium:** " + summary.medium,
+    "4. **Low:** " + summary.low,
+    "5. **Unknown:** " + summary.unknown,
+  ].join("\n");
 }
 
-function escapeForAppleScript(input: string): string {
-  return input.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-async function runInTerminal(command: string): Promise<void> {
-  const escaped = escapeForAppleScript(command);
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      "osascript",
-      ["-e", 'tell application "Terminal"', "-e", "activate", "-e", `do script "${escaped}"`, "-e", "end tell"],
-      (error) => {
-        if (error) reject(error);
-        else resolve();
-      },
-    );
-  });
+async function copyText(content: string, title: string) {
+  await Clipboard.copy(content);
+  await showToast({ style: Toast.Style.Success, title, message: content });
 }
 
 function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: string }) {
@@ -89,8 +71,8 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
           accessories={[{ text: member.role }]}
           actions={
             <ActionPanel>
-              <Action.CopyToClipboard title="Copy Username" content={member.username} />
-              <Action.CopyToClipboard title="Copy Role" content={member.role} />
+              <Action title="Copy Username" onAction={() => copyText(member.username, "Username copied")} />
+              <Action title="Copy Role" onAction={() => copyText(member.role, "Role copied")} />
             </ActionPanel>
           }
         />
@@ -99,7 +81,7 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
   );
 }
 
-function RepositoryArtifactsDetail(props: {
+export function RepositoryArtifactsDetail(props: {
   provider: RegistryProvider;
   providerKind: ProviderKind;
   providerBaseUrl?: string;
@@ -122,23 +104,22 @@ function RepositoryArtifactsDetail(props: {
     [data, hideUntagged],
   );
 
-  async function copyText(content: string, title: string) {
-    await Clipboard.copy(content);
-    await showToast({ style: Toast.Style.Success, title, message: content });
-  }
-
   async function onPullLocally(fullArtifactPath: string) {
     const pullCommand = `docker pull ${fullArtifactPath}`;
     await showToast({ style: Toast.Style.Animated, title: "Starting local pull...", message: pullCommand });
-    await runInTerminal(pullCommand);
-    await showToast({ style: Toast.Style.Success, title: "Docker pull started in Terminal", message: pullCommand });
+    await runInDefaultTerminal(pullCommand);
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Docker pull started in your terminal",
+      message: pullCommand,
+    });
   }
 
   async function runArtifactAction(action: () => Promise<void>, loadingTitle: string, doneTitle: string) {
     await showToast({ style: Toast.Style.Animated, title: loadingTitle });
     await action();
     await revalidate();
-    await showHUD(doneTitle);
+    await showToast({ style: Toast.Style.Success, title: doneTitle });
   }
 
   async function onDeleteTag(image: RegistryImage) {
@@ -207,11 +188,13 @@ function RepositoryArtifactsDetail(props: {
                   `# ${image.repository}:${image.tag}`,
                   `- **Provider:** ${image.providerLabel}`,
                   `- **Project:** ${image.project}`,
-                  `- **Digest:** \`${image.digest}\``,
                   `- **Size:** ${formatBytes(image.sizeBytes)}`,
+                  `- **Platforms:** ${image.platforms?.length ? image.platforms.join(", ") : "-"}`,
                   `- **Pushed At:** ${image.pushedAt ? new Date(image.pushedAt).toLocaleString() : "-"}`,
                   `- **Scan Status:** ${image.scanStatus}`,
-                  `- **Vulnerabilities:** ${vulnDetail(image.vulnerabilitySummary)}`,
+                  "",
+                  "## Vulnerabilities",
+                  vulnDetail(image.vulnerabilitySummary),
                 ].join("\n")}
               />
             }
@@ -259,13 +242,25 @@ function RepositoryArtifactsDetail(props: {
   );
 }
 
-function ProjectRepositoriesDetail(props: {
+export function ProjectRepositoriesDetail(props: {
+  providerId: string;
   provider: RegistryProvider;
   providerKind: ProviderKind;
   providerBaseUrl?: string;
   projectName: string;
 }) {
   const [searchText, setSearchText] = useState("");
+  const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
+    "favorite-repositories",
+    "[]",
+  );
+  const favoriteRepos = useMemo(() => {
+    try {
+      return JSON.parse(favoriteReposRaw ?? "[]") as FavoriteRepository[];
+    } catch {
+      return [] as FavoriteRepository[];
+    }
+  }, [favoriteReposRaw]);
   const { data, isLoading } = useCachedPromise(
     (projectName: string, query: string) => props.provider.listProjectRepositories(projectName, query),
     [props.projectName, searchText],
@@ -305,6 +300,31 @@ function ProjectRepositoriesDetail(props: {
     await showToast({ style: Toast.Style.Success, title: `Latest tag copied: ${tag}` });
   }
 
+  async function toggleFavoriteRepository(repositoryName: string) {
+    const exists = favoriteRepos.some(
+      (item) =>
+        item.providerId === props.providerId &&
+        item.projectName === props.projectName &&
+        item.repositoryName === repositoryName,
+    );
+    const next = exists
+      ? favoriteRepos.filter(
+          (item) =>
+            !(
+              item.providerId === props.providerId &&
+              item.projectName === props.projectName &&
+              item.repositoryName === repositoryName
+            ),
+        )
+      : [...favoriteRepos, { providerId: props.providerId, projectName: props.projectName, repositoryName }];
+    await setFavoriteReposRaw(JSON.stringify(next));
+    await showToast({
+      style: Toast.Style.Success,
+      title: exists ? "Removed from favorite repositories" : "Added to favorite repositories",
+      message: `${props.projectName}/${repositoryName}`,
+    });
+  }
+
   return (
     <List
       isLoading={isLoading}
@@ -322,6 +342,14 @@ function ProjectRepositoriesDetail(props: {
             latestTags?.[repository.name] ? { tag: `latest:${latestTags[repository.name]}` } : { text: "" },
             repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
             repository.updateTime ? { text: new Date(repository.updateTime).toLocaleDateString() } : { text: "" },
+            favoriteRepos.some(
+              (item) =>
+                item.providerId === props.providerId &&
+                item.projectName === props.projectName &&
+                item.repositoryName === repository.name,
+            )
+              ? { icon: { source: Icon.Star, tintColor: Color.Yellow } }
+              : { text: "" },
           ]}
           actions={
             <ActionPanel>
@@ -338,8 +366,25 @@ function ProjectRepositoriesDetail(props: {
                 }
               />
               <Action.OpenInBrowser title="Open Repository in Browser" url={repository.url} />
-              <Action.CopyToClipboard title="Copy Repository Name" content={repository.name} />
+              <Action
+                title="Copy Repository Name"
+                onAction={() => copyText(repository.name, "Repository name copied")}
+              />
               <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(repository.name)} />
+              <Action
+                title={
+                  favoriteRepos.some(
+                    (item) =>
+                      item.providerId === props.providerId &&
+                      item.projectName === props.projectName &&
+                      item.repositoryName === repository.name,
+                  )
+                    ? "Remove from Favorite Repositories"
+                    : "Add to Favorite Repositories"
+                }
+                icon={Icon.Star}
+                onAction={() => toggleFavoriteRepository(repository.name)}
+              />
             </ActionPanel>
           }
         />
@@ -389,7 +434,11 @@ export default function Command() {
       ? favorites.filter((entry) => !(entry.providerId === providerId && entry.name === project))
       : [...favorites, { providerId, name: project }];
     await setFavoriteRaw(JSON.stringify(next));
-    await showHUD(exists ? "Removed from favorites" : "Added to favorites");
+    await showToast({
+      style: Toast.Style.Success,
+      title: exists ? "Removed from favorites" : "Added to favorites",
+      message: project,
+    });
     await revalidate();
   }
 
@@ -454,6 +503,7 @@ export default function Command() {
                       title="View Project Repositories"
                       target={
                         <ProjectRepositoriesDetail
+                          providerId={providerEntry.config.id}
                           provider={client}
                           providerKind={providerEntry.config.kind}
                           providerBaseUrl={providerEntry.config.baseUrl}
@@ -473,7 +523,7 @@ export default function Command() {
                   icon={Icon.Star}
                   onAction={() => toggleFavorite(project.providerId, project.name)}
                 />
-                <Action.CopyToClipboard title="Copy Project Name" content={project.name} />
+                <Action title="Copy Project Name" onAction={() => copyText(project.name, "Project name copied")} />
               </ActionPanel>
             }
           />

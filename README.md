@@ -1,4 +1,4 @@
-# Raycast Artifact Repository Utility
+# Artifact Registry Explorer
 
 [![Quality Checks](https://github.com/nicoprocessor/raycast-artifact-repository-utility/actions/workflows/quality-checks.yml/badge.svg)](https://github.com/nicoprocessor/raycast-artifact-repository-utility/actions/workflows/quality-checks.yml)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
@@ -13,6 +13,7 @@ Raycast extension for working with private registries, with multi-provider suppo
 - **Search Images**: search across all providers by default; filter by provider from the dropdown.
 - **Search Projects**: provider-specific or aggregated project flow, with member view where available.
 - **Favorite Projects**: quick access to saved favorites.
+- **Favorite Repositories**: quick access to saved repositories, latest tags, and artifact inspection.
 
 ## Functional Notes
 
@@ -20,6 +21,12 @@ Raycast extension for working with private registries, with multi-provider suppo
 - In Search Images, severity does not show a green check when a scan has not been run yet.
 - Available image actions: copy, open artifact/project, trigger scan, delete tag/artifact.
 - Docker Hub support is in beta (some endpoints like scan/delete may be unavailable via API).
+
+## Screenshots
+
+![Search Images](./media/search-images.png)
+![Search Projects](./media/search-projects.png)
+![Artifact Detail](./media/artifact-detail.png)
 
 ## Quality Checks
 
@@ -32,4 +39,4 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting changes.
 
 ## License
 
-This project is released under the [WTFPL](./LICENSE).
+This project is released under the [MIT License](./LICENSE).
