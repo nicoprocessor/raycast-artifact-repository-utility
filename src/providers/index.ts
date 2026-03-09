@@ -29,6 +29,8 @@ export async function getProviderClients(
   filterProviderId?: string,
 ): Promise<Array<{ config: ProviderConfig; client: RegistryProvider }>> {
   const configs = await getProviderConfigs();
-  const filtered = filterProviderId ? configs.filter((config) => config.id === filterProviderId) : configs;
+  const filtered = (filterProviderId ? configs.filter((config) => config.id === filterProviderId) : configs).filter(
+    (config) => !config.disabled,
+  );
   return filtered.map((config) => ({ config, client: createProvider(config) }));
 }

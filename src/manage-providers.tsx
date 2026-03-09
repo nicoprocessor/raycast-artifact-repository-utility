@@ -135,6 +135,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
         password: nextPassword,
         defaultProject: values.kind === "private-harbor" ? values.defaultProject?.trim() : undefined,
         defaultNamespace: values.kind === "docker-hub" ? values.defaultNamespace?.trim() : undefined,
+        disabled: props.provider.disabled,
       };
 
       await updateProviderConfig(props.provider.id, config);
@@ -185,7 +186,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
           <Form.PasswordField
             id="password"
             title="Registry Password / Token"
-            placeholder="•••••••• (leave blank to keep current)"
+            placeholder="Leave blank to keep current"
           />
           <Form.TextField
             id="defaultProject"
@@ -206,7 +207,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
           <Form.PasswordField
             id="password"
             title="Docker Hub Password / Access Token"
-            placeholder="•••••••• (leave blank to keep current)"
+            placeholder="Leave blank to keep current"
           />
           <Form.TextField
             id="defaultNamespace"
@@ -245,7 +246,21 @@ export default function Command() {
     await showToast({ style: Toast.Style.Success, title: `Removed ${label}` });
   }
 
+  async function toggleProviderDisabled(provider: ProviderConfig) {
+    const next = { ...provider, disabled: !provider.disabled };
+    await updateProviderConfig(provider.id, next);
+    await revalidate();
+    await showToast({
+      style: Toast.Style.Success,
+      title: provider.disabled ? `Enabled ${provider.label}` : `Disabled ${provider.label}`,
+    });
+  }
+
   async function testConnection(provider: ProviderConfig) {
+    if (provider.disabled) {
+      await showToast({ style: Toast.Style.Failure, title: `Enable ${provider.label} to test connection` });
+      return;
+    }
     await setConnectionStatus(provider.id, "testing");
     await showToast({ style: Toast.Style.Animated, title: `Testing ${provider.label}...` });
     try {
@@ -285,10 +300,16 @@ export default function Command() {
       {providers.map((provider) => (
         <List.Item
           key={provider.id}
-          icon={providerIcon(provider.kind)}
+          icon={{
+            source: providerIcon(provider.kind),
+            tintColor: provider.disabled ? Color.SecondaryText : undefined,
+          }}
           title={provider.label}
           subtitle={provider.kind === "private-harbor" ? provider.baseUrl : "Docker Hub"}
           accessories={[
+            provider.disabled
+              ? { text: "Disabled", icon: { source: Icon.Dot, tintColor: Color.SecondaryText } }
+              : { text: "" },
             provider.kind === "docker-hub" ? { tag: "Beta" } : { text: "" },
             provider.password ? { text: "••••••••" } : { text: "" },
             connectionStatus[provider.id] === "success"
@@ -310,6 +331,11 @@ export default function Command() {
                 title="Edit Provider"
                 icon={Icon.Pencil}
                 target={<EditProviderForm provider={provider} onSaved={revalidate} />}
+              />
+              <Action
+                title={provider.disabled ? "Enable Provider" : "Disable Provider"}
+                icon={provider.disabled ? Icon.CheckCircle : Icon.Pause}
+                onAction={() => toggleProviderDisabled(provider)}
               />
               <Action title="Test Connection" icon={Icon.Network} onAction={() => testConnection(provider)} />
               <Action

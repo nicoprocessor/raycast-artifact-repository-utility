@@ -1,8 +1,9 @@
 import { Action, ActionPanel, Alert, Clipboard, Color, confirmAlert, Icon, List, showToast, Toast } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
+import { getProviderConfigs } from "./providers/storage";
 import { RegistryImage, VulnerabilitySummary } from "./providers/types";
 import { buildFullArtifactPath } from "./utils/image-reference";
 import { runInDefaultTerminal } from "./utils/terminal";
@@ -36,6 +37,10 @@ function vulnDetail(summary: VulnerabilitySummary) {
   ].join("\n");
 }
 
+function latestTagKey(entry: Pick<RegistryImage, "providerId" | "project" | "repositoryName">) {
+  return `${entry.providerId}::${entry.project}::${entry.repositoryName}`;
+}
+
 type SearchImagesResult = {
   images: RegistryImage[];
   providers: Awaited<ReturnType<typeof getProviderClients>>;
@@ -46,6 +51,15 @@ type SearchImagesResult = {
 export default function Command() {
   const [searchText, setSearchText] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
+  const { data: providerConfigs } = useCachedPromise(getProviderConfigs, []);
+  const { value: favoriteProjectsRaw, setValue: setFavoriteProjectsRaw } = useLocalStorage<string>(
+    "favorite-projects",
+    "[]",
+  );
+  const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
+    "favorite-repositories",
+    "[]",
+  );
   const { value: lastSearchQueryRaw, setValue: setLastSearchQueryRaw } = useLocalStorage<string>(
     "search-images-last-query",
     "",
@@ -100,8 +114,66 @@ export default function Command() {
     () => (data?.images ?? []).filter((image) => (hideUntagged ? image.tag.toLowerCase() !== "untagged" : true)),
     [data, hideUntagged],
   );
+  const favoriteProjects = useMemo(() => {
+    try {
+      return JSON.parse(favoriteProjectsRaw ?? "[]") as { providerId: string; name: string }[];
+    } catch {
+      return [] as { providerId: string; name: string }[];
+    }
+  }, [favoriteProjectsRaw]);
+  const favoriteRepos = useMemo(() => {
+    try {
+      return JSON.parse(favoriteReposRaw ?? "[]") as {
+        providerId: string;
+        projectName: string;
+        repositoryName: string;
+      }[];
+    } catch {
+      return [] as { providerId: string; projectName: string; repositoryName: string }[];
+    }
+  }, [favoriteReposRaw]);
   const failures = useMemo(() => data?.failures ?? [], [data]);
   const activeQuery = useMemo(() => data?.activeQuery ?? "", [data]);
+  const hasConfiguredProviders = (providerConfigs?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (providerFilter !== "all" && !providers.some(({ config }) => config.id === providerFilter)) {
+      setProviderFilter("all");
+    }
+  }, [providerFilter, providers]);
+  const repositoryEntries = useMemo(() => {
+    const unique = new Map<string, Pick<RegistryImage, "providerId" | "project" | "repositoryName">>();
+    images.forEach((image) => {
+      const entry = { providerId: image.providerId, project: image.project, repositoryName: image.repositoryName };
+      unique.set(latestTagKey(entry), entry);
+    });
+    return Array.from(unique.values());
+  }, [images]);
+  const repositoryKeyList = useMemo(
+    () => repositoryEntries.map((entry) => latestTagKey(entry)).join("|"),
+    [repositoryEntries],
+  );
+  const providersKeyList = useMemo(() => providers.map(({ config }) => config.id).join("|"), [providers]);
+  const { data: latestTags } = useCachedPromise(
+    async (entriesKey: string, providersKey: string) => {
+      if (!entriesKey || !providersKey) return {} as Record<string, string | undefined>;
+      const result = await Promise.all(
+        repositoryEntries.map(async (entry) => {
+          const provider = providers.find((item) => item.config.id === entry.providerId);
+          if (!provider) return [latestTagKey(entry), undefined] as const;
+          try {
+            const tag = await provider.client.getLatestRepositoryTag(entry.project, entry.repositoryName);
+            return [latestTagKey(entry), tag] as const;
+          } catch {
+            return [latestTagKey(entry), undefined] as const;
+          }
+        }),
+      );
+      return Object.fromEntries(result) as Record<string, string | undefined>;
+    },
+    [repositoryKeyList, providersKeyList],
+    { keepPreviousData: true },
+  );
 
   function handleSearchTextChange(text: string) {
     setSearchText(text);
@@ -170,6 +242,42 @@ export default function Command() {
     await showToast({ style: Toast.Style.Success, title, message: content });
   }
 
+  async function toggleFavoriteProject(providerId: string, projectName: string) {
+    const exists = favoriteProjects.some((entry) => entry.providerId === providerId && entry.name === projectName);
+    const next = exists
+      ? favoriteProjects.filter((entry) => !(entry.providerId === providerId && entry.name === projectName))
+      : [...favoriteProjects, { providerId, name: projectName }];
+    await setFavoriteProjectsRaw(JSON.stringify(next));
+    await showToast({
+      style: Toast.Style.Success,
+      title: exists ? "Removed from favorites" : "Added to favorites",
+      message: projectName,
+    });
+  }
+
+  async function toggleFavoriteRepository(providerId: string, projectName: string, repositoryName: string) {
+    const exists = favoriteRepos.some(
+      (entry) =>
+        entry.providerId === providerId && entry.projectName === projectName && entry.repositoryName === repositoryName,
+    );
+    const next = exists
+      ? favoriteRepos.filter(
+          (entry) =>
+            !(
+              entry.providerId === providerId &&
+              entry.projectName === projectName &&
+              entry.repositoryName === repositoryName
+            ),
+        )
+      : [...favoriteRepos, { providerId, projectName, repositoryName }];
+    await setFavoriteReposRaw(JSON.stringify(next));
+    await showToast({
+      style: Toast.Style.Success,
+      title: exists ? "Removed from favorite repositories" : "Added to favorite repositories",
+      message: `${projectName}/${repositoryName}`,
+    });
+  }
+
   async function onPullLocally(fullArtifactPath: string) {
     const pullCommand = `docker pull ${fullArtifactPath}`;
     await showToast({ style: Toast.Style.Animated, title: "Starting local pull...", message: pullCommand });
@@ -200,7 +308,14 @@ export default function Command() {
       isShowingDetail
     >
       {error ? <List.EmptyView title="Request failed" description={error.message} icon={Icon.ExclamationMark} /> : null}
-      {providers.length === 0 ? (
+      {providers.length === 0 && hasConfiguredProviders ? (
+        <List.Item
+          title="All providers disabled"
+          subtitle="Enable a provider from Manage Providers"
+          icon={Icon.Pause}
+        />
+      ) : null}
+      {providers.length === 0 && !hasConfiguredProviders ? (
         <List.Item
           title="No providers configured"
           subtitle="Press ⌘N to add one"
@@ -238,17 +353,32 @@ export default function Command() {
           image.tag,
           provider?.config.baseUrl,
         );
+        const latestTag = latestTags?.[latestTagKey(image)];
+        const isLatest = latestTag === image.tag;
+        const isFavoriteProject = favoriteProjects.some(
+          (entry) => entry.providerId === image.providerId && entry.name === image.project,
+        );
+        const isFavoriteRepository = favoriteRepos.some(
+          (entry) =>
+            entry.providerId === image.providerId &&
+            entry.projectName === image.project &&
+            entry.repositoryName === image.repositoryName,
+        );
         return (
           <List.Item
             key={image.id}
             icon={providerIcon(provider?.config.kind ?? "private-harbor")}
-            title={image.tag}
-            subtitle={image.repository}
-            accessories={[{ icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text }]}
+            title={image.repository}
+            subtitle={image.tag}
+            accessories={[
+              isLatest ? { icon: { source: Icon.Bolt, tintColor: Color.Green }, tooltip: "Latest" } : { text: "" },
+              { icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text },
+            ]}
             detail={
               <List.Item.Detail
                 markdown={[
                   `# ${image.repository}:${image.tag}`,
+                  `- **Repository:** ${image.repository}`,
                   `- **Provider:** ${image.providerLabel}`,
                   `- **Project:** ${image.project}`,
                   `- **Size:** ${formatBytes(image.sizeBytes)}`,
@@ -259,17 +389,41 @@ export default function Command() {
                   "## Vulnerabilities",
                   vulnDetail(image.vulnerabilitySummary),
                 ].join("\n")}
+                metadata={
+                  isLatest ? (
+                    <List.Item.Detail.Metadata>
+                      <List.Item.Detail.Metadata.TagList title=" ">
+                        <List.Item.Detail.Metadata.TagList.Item icon={Icon.Bolt} color={Color.Green} />
+                      </List.Item.Detail.Metadata.TagList>
+                    </List.Item.Detail.Metadata>
+                  ) : undefined
+                }
               />
             }
             actions={
               <ActionPanel>
-                <Action title="Copy Tag" onAction={() => copyText(image.tag, "Tag copied")} />
+                <Action title="Copy Tag" icon={Icon.Clipboard} onAction={() => copyText(image.tag, "Tag copied")} />
                 <Action
                   title="Copy Full Artifact Path"
+                  icon={Icon.Clipboard}
                   shortcut={{ modifiers: ["cmd"], key: "enter" }}
                   onAction={() => copyText(fullArtifactPath, "Full artifact path copied")}
                 />
-                <Action title="Copy Digest" onAction={() => copyText(image.digest, "Digest copied")} />
+                <Action
+                  title="Copy Digest"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(image.digest, "Digest copied")}
+                />
+                <Action
+                  title="Copy Artifact URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(image.artifactUrl, "Artifact URL copied")}
+                />
+                <Action
+                  title="Copy Project URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(image.projectUrl, "Project URL copied")}
+                />
                 <Action
                   title="Pull Locally (Docker)"
                   icon={Icon.Download}
@@ -278,6 +432,16 @@ export default function Command() {
                 />
                 <Action.OpenInBrowser title="Open Artifact in Browser" url={image.artifactUrl} />
                 <Action.OpenInBrowser title="Open Project in Browser" url={image.projectUrl} />
+                <Action
+                  title={isFavoriteRepository ? "Remove from Favorite Repositories" : "Add to Favorite Repositories"}
+                  icon={Icon.Star}
+                  onAction={() => toggleFavoriteRepository(image.providerId, image.project, image.repositoryName)}
+                />
+                <Action
+                  title={isFavoriteProject ? "Remove from Favorites" : "Add to Favorites"}
+                  icon={Icon.Star}
+                  onAction={() => toggleFavoriteProject(image.providerId, image.project)}
+                />
                 <Action
                   title={hideUntagged ? "Show Untagged Images" : "Hide Untagged Images"}
                   icon={Icon.Filter}

@@ -18,6 +18,7 @@ export type ProviderConfig = {
   password?: string;
   defaultProject?: string;
   defaultNamespace?: string;
+  disabled?: boolean;
 };
 
 export type RegistryImage = {

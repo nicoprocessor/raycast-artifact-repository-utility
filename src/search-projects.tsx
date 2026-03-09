@@ -1,8 +1,9 @@
 import { Action, ActionPanel, Alert, Clipboard, Color, Icon, List, confirmAlert, showToast, Toast } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
+import { getProviderConfigs } from "./providers/storage";
 import { ProviderKind, RegistryImage, RegistryProvider, VulnerabilitySummary } from "./providers/types";
 import { buildFullArtifactPath } from "./utils/image-reference";
 import { runInDefaultTerminal } from "./utils/terminal";
@@ -71,8 +72,12 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
           accessories={[{ text: member.role }]}
           actions={
             <ActionPanel>
-              <Action title="Copy Username" onAction={() => copyText(member.username, "Username copied")} />
-              <Action title="Copy Role" onAction={() => copyText(member.role, "Role copied")} />
+              <Action
+                title="Copy Username"
+                icon={Icon.Clipboard}
+                onAction={() => copyText(member.username, "Username copied")}
+              />
+              <Action title="Copy Role" icon={Icon.Clipboard} onAction={() => copyText(member.role, "Role copied")} />
             </ActionPanel>
           }
         />
@@ -81,21 +86,36 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
   );
 }
 
-export function RepositoryArtifactsDetail(props: {
-  provider: RegistryProvider;
-  providerKind: ProviderKind;
-  providerBaseUrl?: string;
-  projectName: string;
-  repositoryName: string;
-}) {
+export function RepositoryArtifactsDetail(props: { providerId: string; projectName: string; repositoryName: string }) {
   const [searchText, setSearchText] = useState("");
   const [hideUntagged, setHideUntagged] = useState(false);
+  const { value: favoriteProjectsRaw, setValue: setFavoriteProjectsRaw } = useLocalStorage<string>(
+    "favorite-projects",
+    "[]",
+  );
+  const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
+    "favorite-repositories",
+    "[]",
+  );
+  const { data: providerEntry, isLoading: isLoadingProvider } = useCachedPromise(
+    async (providerId: string) => {
+      const clients = await getProviderClients(providerId);
+      return clients[0];
+    },
+    [props.providerId],
+    { keepPreviousData: true },
+  );
+  const provider = providerEntry?.client;
+  const providerConfig = providerEntry?.config;
   const { data, isLoading, revalidate } = useCachedPromise(
-    (projectName: string, repositoryName: string, query: string) =>
-      props.provider.listRepositoryArtifacts(projectName, repositoryName, query),
-    [props.projectName, props.repositoryName, searchText],
+    async (providerId: string, projectName: string, repositoryName: string, query: string) => {
+      if (!provider) return [] as RegistryImage[];
+      return provider.listRepositoryArtifacts(projectName, repositoryName, query);
+    },
+    [providerEntry?.config.id ?? "", props.projectName, props.repositoryName, searchText],
     {
       keepPreviousData: true,
+      execute: Boolean(provider),
     },
   );
 
@@ -103,6 +123,80 @@ export function RepositoryArtifactsDetail(props: {
     () => (data ?? []).filter((image) => (hideUntagged ? image.tag.toLowerCase() !== "untagged" : true)),
     [data, hideUntagged],
   );
+  const favoriteProjects = useMemo(() => {
+    try {
+      return JSON.parse(favoriteProjectsRaw ?? "[]") as FavoriteProject[];
+    } catch {
+      return [] as FavoriteProject[];
+    }
+  }, [favoriteProjectsRaw]);
+  const favoriteRepos = useMemo(() => {
+    try {
+      return JSON.parse(favoriteReposRaw ?? "[]") as FavoriteRepository[];
+    } catch {
+      return [] as FavoriteRepository[];
+    }
+  }, [favoriteReposRaw]);
+  const isFavoriteProject = favoriteProjects.some(
+    (item) => item.providerId === props.providerId && item.name === props.projectName,
+  );
+  const isFavoriteRepository = favoriteRepos.some(
+    (item) =>
+      item.providerId === props.providerId &&
+      item.projectName === props.projectName &&
+      item.repositoryName === props.repositoryName,
+  );
+  const { data: latestTag } = useCachedPromise(
+    async (providerId: string, projectName: string, repositoryName: string) => {
+      if (!provider) return undefined;
+      return provider.getLatestRepositoryTag(projectName, repositoryName);
+    },
+    [providerEntry?.config.id ?? "", props.projectName, props.repositoryName],
+    { keepPreviousData: true, execute: Boolean(provider) },
+  );
+
+  async function toggleFavoriteProject() {
+    const exists = favoriteProjects.some(
+      (entry) => entry.providerId === props.providerId && entry.name === props.projectName,
+    );
+    const next = exists
+      ? favoriteProjects.filter((entry) => !(entry.providerId === props.providerId && entry.name === props.projectName))
+      : [...favoriteProjects, { providerId: props.providerId, name: props.projectName }];
+    await setFavoriteProjectsRaw(JSON.stringify(next));
+    await showToast({
+      style: Toast.Style.Success,
+      title: exists ? "Removed from favorites" : "Added to favorites",
+      message: props.projectName,
+    });
+  }
+
+  async function toggleFavoriteRepository() {
+    const exists = favoriteRepos.some(
+      (entry) =>
+        entry.providerId === props.providerId &&
+        entry.projectName === props.projectName &&
+        entry.repositoryName === props.repositoryName,
+    );
+    const next = exists
+      ? favoriteRepos.filter(
+          (entry) =>
+            !(
+              entry.providerId === props.providerId &&
+              entry.projectName === props.projectName &&
+              entry.repositoryName === props.repositoryName
+            ),
+        )
+      : [
+          ...favoriteRepos,
+          { providerId: props.providerId, projectName: props.projectName, repositoryName: props.repositoryName },
+        ];
+    await setFavoriteReposRaw(JSON.stringify(next));
+    await showToast({
+      style: Toast.Style.Success,
+      title: exists ? "Removed from favorite repositories" : "Added to favorite repositories",
+      message: `${props.projectName}/${props.repositoryName}`,
+    });
+  }
 
   async function onPullLocally(fullArtifactPath: string) {
     const pullCommand = `docker pull ${fullArtifactPath}`;
@@ -129,8 +223,9 @@ export function RepositoryArtifactsDetail(props: {
       primaryAction: { title: "Delete Tag", style: Alert.ActionStyle.Destructive },
     });
     if (!confirmed) return;
+    if (!provider) return;
     await runArtifactAction(
-      () => props.provider.deleteTag(image.project, image.repositoryName, image.digest, image.tag),
+      () => provider.deleteTag(image.project, image.repositoryName, image.digest, image.tag),
       "Deleting tag...",
       "Tag deleted",
     );
@@ -143,16 +238,18 @@ export function RepositoryArtifactsDetail(props: {
       primaryAction: { title: "Delete Artifact", style: Alert.ActionStyle.Destructive },
     });
     if (!confirmed) return;
+    if (!provider) return;
     await runArtifactAction(
-      () => props.provider.deleteArtifact(image.project, image.repositoryName, image.digest),
+      () => provider.deleteArtifact(image.project, image.repositoryName, image.digest),
       "Deleting artifact...",
       "Artifact deleted",
     );
   }
 
   async function onTriggerScan(image: RegistryImage) {
+    if (!provider) return;
     await runArtifactAction(
-      () => props.provider.triggerScan(image.project, image.repositoryName, image.digest),
+      () => provider.triggerScan(image.project, image.repositoryName, image.digest),
       "Starting scan...",
       "Scan started",
     );
@@ -160,32 +257,39 @@ export function RepositoryArtifactsDetail(props: {
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || isLoadingProvider}
       onSearchTextChange={setSearchText}
       searchBarPlaceholder="Search artifacts in repository"
       throttle
       isShowingDetail
     >
+      {!provider ? (
+        <List.EmptyView title="Provider unavailable" description="Enable the provider or update its configuration." />
+      ) : null}
       {images.length === 0 ? <List.EmptyView title="No artifacts found" /> : null}
       {images.map((image) => {
         const severity = severityBadge(image.scanStatus, image.vulnerabilitySummary);
         const fullArtifactPath = buildFullArtifactPath(
-          props.providerKind,
+          providerConfig?.kind ?? "private-harbor",
           image.repository,
           image.tag,
-          props.providerBaseUrl,
+          providerConfig?.baseUrl,
         );
+        const isLatest = latestTag === image.tag;
         return (
           <List.Item
             key={image.id}
             icon={Icon.Box}
             title={image.tag}
-            subtitle={image.repository}
-            accessories={[{ icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text }]}
+            accessories={[
+              isLatest ? { icon: { source: Icon.Bolt, tintColor: Color.Green }, tooltip: "Latest" } : { text: "" },
+              { icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text },
+            ]}
             detail={
               <List.Item.Detail
                 markdown={[
-                  `# ${image.repository}:${image.tag}`,
+                  `# ${image.tag}`,
+                  `- **Repository:** ${image.repository}`,
                   `- **Provider:** ${image.providerLabel}`,
                   `- **Project:** ${image.project}`,
                   `- **Size:** ${formatBytes(image.sizeBytes)}`,
@@ -196,15 +300,40 @@ export function RepositoryArtifactsDetail(props: {
                   "## Vulnerabilities",
                   vulnDetail(image.vulnerabilitySummary),
                 ].join("\n")}
+                metadata={
+                  isLatest ? (
+                    <List.Item.Detail.Metadata>
+                      <List.Item.Detail.Metadata.TagList title=" ">
+                        <List.Item.Detail.Metadata.TagList.Item icon={Icon.Bolt} color={Color.Green} />
+                      </List.Item.Detail.Metadata.TagList>
+                    </List.Item.Detail.Metadata>
+                  ) : undefined
+                }
               />
             }
             actions={
               <ActionPanel>
-                <Action title="Copy Tag" onAction={() => copyText(image.tag, "Tag copied")} />
+                <Action title="Copy Tag" icon={Icon.Clipboard} onAction={() => copyText(image.tag, "Tag copied")} />
                 <Action
                   title="Copy Full Artifact Path"
+                  icon={Icon.Clipboard}
                   shortcut={{ modifiers: ["cmd"], key: "enter" }}
                   onAction={() => copyText(fullArtifactPath, "Full artifact path copied")}
+                />
+                <Action
+                  title="Copy Digest"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(image.digest, "Digest copied")}
+                />
+                <Action
+                  title="Copy Artifact URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(image.artifactUrl, "Artifact URL copied")}
+                />
+                <Action
+                  title="Copy Project URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(image.projectUrl, "Project URL copied")}
                 />
                 <Action
                   title="Pull Locally (Docker)"
@@ -212,9 +341,18 @@ export function RepositoryArtifactsDetail(props: {
                   shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
                   onAction={() => onPullLocally(fullArtifactPath)}
                 />
-                <Action title="Copy Digest" onAction={() => copyText(image.digest, "Digest copied")} />
                 <Action.OpenInBrowser title="Open Artifact in Browser" url={image.artifactUrl} />
                 <Action.OpenInBrowser title="Open Project in Browser" url={image.projectUrl} />
+                <Action
+                  title={isFavoriteRepository ? "Remove from Favorite Repositories" : "Add to Favorite Repositories"}
+                  icon={Icon.Star}
+                  onAction={toggleFavoriteRepository}
+                />
+                <Action
+                  title={isFavoriteProject ? "Remove from Favorites" : "Add to Favorites"}
+                  icon={Icon.Star}
+                  onAction={toggleFavoriteProject}
+                />
                 <Action
                   title={hideUntagged ? "Show Untagged Images" : "Hide Untagged Images"}
                   icon={Icon.Filter}
@@ -339,7 +477,9 @@ export function ProjectRepositoriesDetail(props: {
           icon={Icon.Box}
           title={repository.name}
           accessories={[
-            latestTags?.[repository.name] ? { tag: `latest:${latestTags[repository.name]}` } : { text: "" },
+            latestTags?.[repository.name]
+              ? { icon: { source: Icon.Bolt, tintColor: Color.Green }, tooltip: "Latest" }
+              : { text: "" },
             repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
             repository.updateTime ? { text: new Date(repository.updateTime).toLocaleDateString() } : { text: "" },
             favoriteRepos.some(
@@ -357,9 +497,7 @@ export function ProjectRepositoriesDetail(props: {
                 title="Inspect Artifacts"
                 target={
                   <RepositoryArtifactsDetail
-                    provider={props.provider}
-                    providerKind={props.providerKind}
-                    providerBaseUrl={props.providerBaseUrl}
+                    providerId={props.providerId}
                     projectName={props.projectName}
                     repositoryName={repository.name}
                   />
@@ -368,6 +506,7 @@ export function ProjectRepositoriesDetail(props: {
               <Action.OpenInBrowser title="Open Repository in Browser" url={repository.url} />
               <Action
                 title="Copy Repository Name"
+                icon={Icon.Clipboard}
                 onAction={() => copyText(repository.name, "Repository name copied")}
               />
               <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(repository.name)} />
@@ -397,6 +536,7 @@ export default function Command() {
   const [searchText, setSearchText] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const { value: favoriteRaw, setValue: setFavoriteRaw } = useLocalStorage<string>("favorite-projects", "[]");
+  const { data: providerConfigs } = useCachedPromise(getProviderConfigs, []);
 
   const favorites = useMemo(() => {
     try {
@@ -427,6 +567,13 @@ export default function Command() {
 
   const clients = data?.clients ?? [];
   const projects = data?.projects ?? [];
+  const hasConfiguredProviders = (providerConfigs?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (providerFilter !== "all" && !clients.some(({ config }) => config.id === providerFilter)) {
+      setProviderFilter("all");
+    }
+  }, [providerFilter, clients]);
 
   async function toggleFavorite(providerId: string, project: string) {
     const exists = favorites.some((entry) => entry.providerId === providerId && entry.name === project);
@@ -462,7 +609,14 @@ export default function Command() {
       }
       throttle
     >
-      {clients.length === 0 ? (
+      {clients.length === 0 && hasConfiguredProviders ? (
+        <List.Item
+          title="All providers disabled"
+          subtitle="Enable a provider from Manage Providers"
+          icon={Icon.Pause}
+        />
+      ) : null}
+      {clients.length === 0 && !hasConfiguredProviders ? (
         <List.Item
           title="No providers configured"
           subtitle="Press ⌘N to add one"
@@ -523,7 +677,11 @@ export default function Command() {
                   icon={Icon.Star}
                   onAction={() => toggleFavorite(project.providerId, project.name)}
                 />
-                <Action title="Copy Project Name" onAction={() => copyText(project.name, "Project name copied")} />
+                <Action
+                  title="Copy Project Name"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(project.name, "Project name copied")}
+                />
               </ActionPanel>
             }
           />

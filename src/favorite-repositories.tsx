@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Clipboard, Icon, List, showToast, Toast } from "@raycast/api";
+import { Action, ActionPanel, Clipboard, Color, Icon, List, showToast, Toast } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useState } from "react";
 import { getProviderClients, providerIcon } from "./providers";
@@ -171,7 +171,9 @@ export default function Command() {
             title={item.repositoryName}
             subtitle={`${item.projectName} · ${item.providerLabel}`}
             accessories={[
-              latestTags?.[key] ? { tag: `latest:${latestTags[key]}` } : { text: "" },
+              latestTags?.[key]
+                ? { icon: { source: Icon.Bolt, tintColor: Color.Green }, tooltip: "Latest" }
+                : { text: "" },
               item.artifactCount !== undefined ? { text: `${item.artifactCount} artifacts` } : { text: "" },
               item.updateTime ? { text: new Date(item.updateTime).toLocaleDateString() } : { text: "" },
             ]}
@@ -181,9 +183,7 @@ export default function Command() {
                   title="Inspect Artifacts"
                   target={
                     <RepositoryArtifactsDetail
-                      provider={item.provider}
-                      providerKind={item.providerKind}
-                      providerBaseUrl={item.providerBaseUrl}
+                      providerId={item.providerId}
                       projectName={item.projectName}
                       repositoryName={item.repositoryName}
                     />
