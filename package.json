@@ -62,6 +62,7 @@
     "@types/node": "18.18.4",
     "eslint": "^9.39.3",
     "prettier": "^3.0.3",
+    "simple-git-hooks": "^2.13.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
@@ -70,7 +71,11 @@
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
+    "prepare": "simple-git-hooks",
     "publish": "ray publish",
     "test": "vitest"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "npm run test -- --run"
   }
 }
