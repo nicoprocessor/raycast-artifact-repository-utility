@@ -52,10 +52,6 @@ export default function Command() {
   const [searchText, setSearchText] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const { data: providerConfigs } = useCachedPromise(getProviderConfigs, []);
-  const { value: favoriteProjectsRaw, setValue: setFavoriteProjectsRaw } = useLocalStorage<string>(
-    "favorite-projects",
-    "[]",
-  );
   const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
     "favorite-repositories",
     "[]",
@@ -114,13 +110,6 @@ export default function Command() {
     () => (data?.images ?? []).filter((image) => (hideUntagged ? image.tag.toLowerCase() !== "untagged" : true)),
     [data, hideUntagged],
   );
-  const favoriteProjects = useMemo(() => {
-    try {
-      return JSON.parse(favoriteProjectsRaw ?? "[]") as { providerId: string; name: string }[];
-    } catch {
-      return [] as { providerId: string; name: string }[];
-    }
-  }, [favoriteProjectsRaw]);
   const favoriteRepos = useMemo(() => {
     try {
       return JSON.parse(favoriteReposRaw ?? "[]") as {
@@ -242,19 +231,6 @@ export default function Command() {
     await showToast({ style: Toast.Style.Success, title, message: content });
   }
 
-  async function toggleFavoriteProject(providerId: string, projectName: string) {
-    const exists = favoriteProjects.some((entry) => entry.providerId === providerId && entry.name === projectName);
-    const next = exists
-      ? favoriteProjects.filter((entry) => !(entry.providerId === providerId && entry.name === projectName))
-      : [...favoriteProjects, { providerId, name: projectName }];
-    await setFavoriteProjectsRaw(JSON.stringify(next));
-    await showToast({
-      style: Toast.Style.Success,
-      title: exists ? "Removed from favorites" : "Added to favorites",
-      message: projectName,
-    });
-  }
-
   async function toggleFavoriteRepository(providerId: string, projectName: string, repositoryName: string) {
     const exists = favoriteRepos.some(
       (entry) =>
@@ -355,9 +331,6 @@ export default function Command() {
         );
         const latestTag = latestTags?.[latestTagKey(image)];
         const isLatest = latestTag === image.tag;
-        const isFavoriteProject = favoriteProjects.some(
-          (entry) => entry.providerId === image.providerId && entry.name === image.project,
-        );
         const isFavoriteRepository = favoriteRepos.some(
           (entry) =>
             entry.providerId === image.providerId &&
@@ -436,11 +409,6 @@ export default function Command() {
                   title={isFavoriteRepository ? "Remove from Favorite Repositories" : "Add to Favorite Repositories"}
                   icon={Icon.Star}
                   onAction={() => toggleFavoriteRepository(image.providerId, image.project, image.repositoryName)}
-                />
-                <Action
-                  title={isFavoriteProject ? "Remove from Favorites" : "Add to Favorites"}
-                  icon={Icon.Star}
-                  onAction={() => toggleFavoriteProject(image.providerId, image.project)}
                 />
                 <Action
                   title={hideUntagged ? "Show Untagged Images" : "Hide Untagged Images"}

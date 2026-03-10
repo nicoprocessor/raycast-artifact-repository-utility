@@ -89,10 +89,6 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
 export function RepositoryArtifactsDetail(props: { providerId: string; projectName: string; repositoryName: string }) {
   const [searchText, setSearchText] = useState("");
   const [hideUntagged, setHideUntagged] = useState(false);
-  const { value: favoriteProjectsRaw, setValue: setFavoriteProjectsRaw } = useLocalStorage<string>(
-    "favorite-projects",
-    "[]",
-  );
   const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
     "favorite-repositories",
     "[]",
@@ -123,13 +119,6 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
     () => (data ?? []).filter((image) => (hideUntagged ? image.tag.toLowerCase() !== "untagged" : true)),
     [data, hideUntagged],
   );
-  const favoriteProjects = useMemo(() => {
-    try {
-      return JSON.parse(favoriteProjectsRaw ?? "[]") as FavoriteProject[];
-    } catch {
-      return [] as FavoriteProject[];
-    }
-  }, [favoriteProjectsRaw]);
   const favoriteRepos = useMemo(() => {
     try {
       return JSON.parse(favoriteReposRaw ?? "[]") as FavoriteRepository[];
@@ -137,9 +126,6 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
       return [] as FavoriteRepository[];
     }
   }, [favoriteReposRaw]);
-  const isFavoriteProject = favoriteProjects.some(
-    (item) => item.providerId === props.providerId && item.name === props.projectName,
-  );
   const isFavoriteRepository = favoriteRepos.some(
     (item) =>
       item.providerId === props.providerId &&
@@ -154,21 +140,6 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
     [providerEntry?.config.id ?? "", props.projectName, props.repositoryName],
     { keepPreviousData: true, execute: Boolean(provider) },
   );
-
-  async function toggleFavoriteProject() {
-    const exists = favoriteProjects.some(
-      (entry) => entry.providerId === props.providerId && entry.name === props.projectName,
-    );
-    const next = exists
-      ? favoriteProjects.filter((entry) => !(entry.providerId === props.providerId && entry.name === props.projectName))
-      : [...favoriteProjects, { providerId: props.providerId, name: props.projectName }];
-    await setFavoriteProjectsRaw(JSON.stringify(next));
-    await showToast({
-      style: Toast.Style.Success,
-      title: exists ? "Removed from favorites" : "Added to favorites",
-      message: props.projectName,
-    });
-  }
 
   async function toggleFavoriteRepository() {
     const exists = favoriteRepos.some(
@@ -347,11 +318,6 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
                   title={isFavoriteRepository ? "Remove from Favorite Repositories" : "Add to Favorite Repositories"}
                   icon={Icon.Star}
                   onAction={toggleFavoriteRepository}
-                />
-                <Action
-                  title={isFavoriteProject ? "Remove from Favorites" : "Add to Favorites"}
-                  icon={Icon.Star}
-                  onAction={toggleFavoriteProject}
                 />
                 <Action
                   title={hideUntagged ? "Show Untagged Images" : "Hide Untagged Images"}
@@ -647,7 +613,7 @@ export default function Command() {
             subtitle={project.providerLabel}
             accessories={[
               project.repoCount !== undefined ? { text: `${project.repoCount} repos` } : { text: "" },
-              favorite ? { icon: { source: Icon.Star, tintColor: Color.Yellow } } : { text: "" },
+              favorite ? { icon: { source: Icon.Star, tintColor: Color.Yellow }, tooltip: "Favorite" } : { text: "" },
             ]}
             actions={
               <ActionPanel>
