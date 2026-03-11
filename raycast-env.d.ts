@@ -7,7 +7,12 @@
 
 /* eslint-disable @typescript-eslint/ban-types */
 
-type ExtensionPreferences = {}
+type ExtensionPreferences = {
+  /** Date Format - Choose how dates are displayed across the extension. */
+  "dateFormat": "iso" | "us" | "it" | "ymd",
+  /** Latest Tag Cache Timeout - Invalidate latest-tag cache after this interval. */
+  "latestTagCacheTtlSeconds": "60" | "300" | "600"
+}
 
 /** Preferences accessible in all the extension's commands */
 declare type Preferences = ExtensionPreferences

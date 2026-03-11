@@ -4,12 +4,34 @@ import { useEffect, useMemo, useState } from "react";
 import { AddProviderForm } from "./manage-providers";
 import { getProviderClients, providerIcon } from "./providers";
 import { getProviderConfigs } from "./providers/storage";
-import { ProviderKind, RegistryImage, RegistryProvider, VulnerabilitySummary } from "./providers/types";
+import {
+  ProviderKind,
+  RegistryImage,
+  RegistryProject,
+  RegistryProvider,
+  VulnerabilitySummary,
+} from "./providers/types";
 import { buildFullArtifactPath } from "./utils/image-reference";
+import { useDelayedLoading } from "./utils/loading";
+import { formatDate, formatDateTime, getUserSettings } from "./utils/settings";
 import { runInDefaultTerminal } from "./utils/terminal";
 
 type FavoriteProject = { providerId: string; name: string };
 type FavoriteRepository = { providerId: string; projectName: string; repositoryName: string };
+type LatestTagCacheEntry = { tag?: string; fetchedAt: number };
+type LatestTagCache = Record<string, LatestTagCacheEntry>;
+
+function parseLatestTagCache(raw: string | undefined): LatestTagCache {
+  try {
+    return JSON.parse(raw ?? "{}") as LatestTagCache;
+  } catch {
+    return {};
+  }
+}
+
+function buildRepositoryLatestTagCacheKey(providerId: string, projectName: string, repositoryName: string): string {
+  return `${providerId}:${projectName}:${repositoryName}`;
+}
 
 function formatBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return "-";
@@ -87,6 +109,7 @@ function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: 
 }
 
 export function RepositoryArtifactsDetail(props: { providerId: string; projectName: string; repositoryName: string }) {
+  const settings = getUserSettings();
   const [searchText, setSearchText] = useState("");
   const [hideUntagged, setHideUntagged] = useState(false);
   const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
@@ -132,14 +155,19 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
       item.projectName === props.projectName &&
       item.repositoryName === props.repositoryName,
   );
-  const { data: latestTag } = useCachedPromise(
+  const { data: latestTag, isLoading: isLoadingLatestTag } = useCachedPromise(
     async (providerId: string, projectName: string, repositoryName: string) => {
       if (!provider) return undefined;
-      return provider.getLatestRepositoryTag(projectName, repositoryName);
+      try {
+        return await provider.getLatestRepositoryTag(projectName, repositoryName);
+      } catch {
+        return undefined;
+      }
     },
     [providerEntry?.config.id ?? "", props.projectName, props.repositoryName],
     { keepPreviousData: true, execute: Boolean(provider) },
   );
+  const isLoadingLatestTagSlow = useDelayedLoading(isLoadingLatestTag && Boolean(provider));
 
   async function toggleFavoriteRepository() {
     const exists = favoriteRepos.some(
@@ -228,7 +256,7 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
 
   return (
     <List
-      isLoading={isLoading || isLoadingProvider}
+      isLoading={isLoading || isLoadingProvider || isLoadingLatestTagSlow}
       onSearchTextChange={setSearchText}
       searchBarPlaceholder="Search artifacts in repository"
       throttle
@@ -253,7 +281,7 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
             icon={Icon.Box}
             title={image.tag}
             accessories={[
-              isLatest ? { icon: { source: Icon.Bolt, tintColor: Color.Green }, tooltip: "Latest" } : { text: "" },
+              isLatest ? { icon: { source: Icon.ArrowUp, tintColor: Color.Green }, tooltip: "Latest" } : { text: "" },
               { icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text },
             ]}
             detail={
@@ -265,21 +293,12 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
                   `- **Project:** ${image.project}`,
                   `- **Size:** ${formatBytes(image.sizeBytes)}`,
                   `- **Platforms:** ${image.platforms?.length ? image.platforms.join(", ") : "-"}`,
-                  `- **Pushed At:** ${image.pushedAt ? new Date(image.pushedAt).toLocaleString() : "-"}`,
+                  `- **Pushed At:** ${formatDateTime(image.pushedAt, settings.dateFormat)}`,
                   `- **Scan Status:** ${image.scanStatus}`,
                   "",
                   "## Vulnerabilities",
                   vulnDetail(image.vulnerabilitySummary),
                 ].join("\n")}
-                metadata={
-                  isLatest ? (
-                    <List.Item.Detail.Metadata>
-                      <List.Item.Detail.Metadata.TagList title=" ">
-                        <List.Item.Detail.Metadata.TagList.Item icon={Icon.Bolt} color={Color.Green} />
-                      </List.Item.Detail.Metadata.TagList>
-                    </List.Item.Detail.Metadata>
-                  ) : undefined
-                }
               />
             }
             actions={
@@ -342,6 +361,14 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
           />
         );
       })}
+      {isLoadingLatestTagSlow ? (
+        <List.Item
+          id="status-loading-latest-tag"
+          title="Updating latest tag..."
+          subtitle="Repository metadata is still loading. Results are not final yet."
+          icon={Icon.Clock}
+        />
+      ) : null}
     </List>
   );
 }
@@ -353,10 +380,15 @@ export function ProjectRepositoriesDetail(props: {
   providerBaseUrl?: string;
   projectName: string;
 }) {
+  const settings = getUserSettings();
   const [searchText, setSearchText] = useState("");
   const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
     "favorite-repositories",
     "[]",
+  );
+  const { value: latestTagCacheRaw, setValue: setLatestTagCacheRaw } = useLocalStorage<string>(
+    "project-repositories-latest-tag-cache",
+    "{}",
   );
   const favoriteRepos = useMemo(() => {
     try {
@@ -374,28 +406,66 @@ export function ProjectRepositoriesDetail(props: {
   );
 
   const repositories = data ?? [];
-  const { data: latestTags } = useCachedPromise(
-    async (projectName: string, repositoryNames: string) => {
+  const repositoriesKey = useMemo(
+    () =>
+      repositories
+        .map((repo) => repo.name)
+        .sort()
+        .join(","),
+    [repositories],
+  );
+  const cachedLatestTags = useMemo(() => {
+    const cache = parseLatestTagCache(latestTagCacheRaw);
+    const now = Date.now();
+    return Object.fromEntries(
+      repositories.map((repository) => {
+        const cacheKey = buildRepositoryLatestTagCacheKey(props.providerId, props.projectName, repository.name);
+        const entry = cache[cacheKey];
+        const isFresh = Boolean(entry) && now - entry.fetchedAt <= settings.latestTagCacheTtlMs;
+        return [repository.name, isFresh ? entry?.tag : undefined] as const;
+      }),
+    ) as Record<string, string | undefined>;
+  }, [latestTagCacheRaw, props.projectName, props.providerId, repositories, settings.latestTagCacheTtlMs]);
+  const { data: latestTags, isLoading: isLoadingLatestTags } = useCachedPromise(
+    async (providerId: string, projectName: string, repositoryNames: string, cacheRaw: string | undefined) => {
       const names = repositoryNames ? repositoryNames.split(",").filter(Boolean) : [];
+      const now = Date.now();
+      const cache = parseLatestTagCache(cacheRaw);
+      let cacheChanged = false;
       const result = await Promise.all(
         names.map(async (name) => {
+          const cacheKey = buildRepositoryLatestTagCacheKey(providerId, projectName, name);
+          const cached = cache[cacheKey];
+          if (cached && now - cached.fetchedAt <= settings.latestTagCacheTtlMs) {
+            return [name, cached.tag] as const;
+          }
+
           try {
             const tag = await props.provider.getLatestRepositoryTag(projectName, name);
+            cache[cacheKey] = { tag, fetchedAt: Date.now() };
+            cacheChanged = true;
             return [name, tag] as const;
           } catch {
+            cache[cacheKey] = { tag: undefined, fetchedAt: Date.now() };
+            cacheChanged = true;
             return [name, undefined] as const;
           }
         }),
       );
+      if (cacheChanged) {
+        await setLatestTagCacheRaw(JSON.stringify(cache));
+      }
       return Object.fromEntries(result) as Record<string, string | undefined>;
     },
-    [props.projectName, repositories.map((repo) => repo.name).join(",")],
+    [props.providerId, props.projectName, repositoriesKey, latestTagCacheRaw, settings.latestTagCacheTtlMs],
     { keepPreviousData: true },
   );
+  const displayedLatestTags = latestTags ?? cachedLatestTags;
 
   async function copyLatestTag(repositoryName: string) {
     const tag =
-      latestTags?.[repositoryName] ?? (await props.provider.getLatestRepositoryTag(props.projectName, repositoryName));
+      displayedLatestTags[repositoryName] ??
+      (await props.provider.getLatestRepositoryTag(props.projectName, repositoryName));
     if (!tag) {
       await showToast({ style: Toast.Style.Failure, title: "No tag available" });
       return;
@@ -429,9 +499,22 @@ export function ProjectRepositoriesDetail(props: {
     });
   }
 
+  async function refreshLatestTags() {
+    const cache = parseLatestTagCache(latestTagCacheRaw);
+    const prefix = `${props.providerId}:${props.projectName}:`;
+    const trimmed = Object.fromEntries(Object.entries(cache).filter(([key]) => !key.startsWith(prefix)));
+    await showToast({ style: Toast.Style.Animated, title: "Refreshing latest tags..." });
+    await setLatestTagCacheRaw(JSON.stringify(trimmed));
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Latest tag cache cleared",
+      message: "Refreshing repositories in this project",
+    });
+  }
+
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || (isLoadingLatestTags && repositories.length > 0)}
       onSearchTextChange={setSearchText}
       searchBarPlaceholder="Search repositories in project"
       throttle
@@ -443,11 +526,16 @@ export function ProjectRepositoriesDetail(props: {
           icon={Icon.Box}
           title={repository.name}
           accessories={[
-            latestTags?.[repository.name]
-              ? { icon: { source: Icon.Bolt, tintColor: Color.Green }, tooltip: "Latest" }
+            displayedLatestTags[repository.name]
+              ? {
+                  tag: { value: displayedLatestTags[repository.name] ?? "", color: Color.Green },
+                  tooltip: "Latest tag",
+                }
+              : isLoadingLatestTags
+              ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
               : { text: "" },
             repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
-            repository.updateTime ? { text: new Date(repository.updateTime).toLocaleDateString() } : { text: "" },
+            repository.updateTime ? { text: formatDate(repository.updateTime, settings.dateFormat) } : { text: "" },
             favoriteRepos.some(
               (item) =>
                 item.providerId === props.providerId &&
@@ -477,6 +565,12 @@ export function ProjectRepositoriesDetail(props: {
               />
               <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(repository.name)} />
               <Action
+                title="Refresh Latest Tags"
+                icon={Icon.ArrowClockwise}
+                shortcut={{ modifiers: ["cmd"], key: "r" }}
+                onAction={refreshLatestTags}
+              />
+              <Action
                 title={
                   favoriteRepos.some(
                     (item) =>
@@ -494,6 +588,24 @@ export function ProjectRepositoriesDetail(props: {
           }
         />
       ))}
+      {isLoadingLatestTags && repositories.length > 0 ? (
+        <List.Item
+          id="status-loading-project-repositories-latest-tags"
+          title="Updating latest tags..."
+          subtitle="Some repositories are still loading. Results are not final yet."
+          icon={Icon.Clock}
+          actions={
+            <ActionPanel>
+              <Action
+                title="Refresh Latest Tags"
+                icon={Icon.ArrowClockwise}
+                shortcut={{ modifiers: ["cmd"], key: "r" }}
+                onAction={refreshLatestTags}
+              />
+            </ActionPanel>
+          }
+        />
+      ) : null}
     </List>
   );
 }
@@ -515,17 +627,25 @@ export default function Command() {
   const { data, isLoading, revalidate } = useCachedPromise(
     async (query: string, selectedProviderId: string) => {
       const clients = await getProviderClients(selectedProviderId === "all" ? undefined : selectedProviderId);
-      const projects = await Promise.all(
+      const projectsByProvider = await Promise.all(
         clients.map(async ({ config, client }) => {
           try {
             const found = await client.listProjects(query);
-            return found.map((project) => ({ ...project, providerLabel: config.label }));
-          } catch {
-            return [];
+            return {
+              projects: found.map((project) => ({ ...project, providerLabel: config.label })),
+              failure: undefined as string | undefined,
+            };
+          } catch (providerError) {
+            const message = providerError instanceof Error ? providerError.message : String(providerError);
+            return { projects: [] as RegistryProject[], failure: `${config.label}: ${message}` };
           }
         }),
       );
-      return { clients, projects: projects.flat() };
+      return {
+        clients,
+        projects: projectsByProvider.flatMap((entry) => entry.projects),
+        failures: projectsByProvider.map((entry) => entry.failure).filter((item): item is string => Boolean(item)),
+      };
     },
     [searchText, providerFilter],
     { keepPreviousData: true },
@@ -533,6 +653,7 @@ export default function Command() {
 
   const clients = data?.clients ?? [];
   const projects = data?.projects ?? [];
+  const failures = data?.failures ?? [];
   const hasConfiguredProviders = (providerConfigs?.length ?? 0) > 0;
 
   useEffect(() => {
@@ -596,6 +717,14 @@ export default function Command() {
               />
             </ActionPanel>
           }
+        />
+      ) : null}
+      {failures.length > 0 ? (
+        <List.Item
+          id="status-provider-failures-project-search"
+          title="Some providers failed"
+          subtitle={failures.join(" | ")}
+          icon={Icon.ExclamationMark}
         />
       ) : null}
 

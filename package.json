@@ -12,6 +12,56 @@
   "platforms": [
     "macOS"
   ],
+  "preferences": [
+    {
+      "name": "dateFormat",
+      "title": "Date Format",
+      "description": "Choose how dates are displayed across the extension.",
+      "type": "dropdown",
+      "required": true,
+      "default": "it",
+      "data": [
+        {
+          "title": "ISO Timestamp",
+          "value": "iso"
+        },
+        {
+          "title": "m/d/Y",
+          "value": "us"
+        },
+        {
+          "title": "d/m/Y",
+          "value": "it"
+        },
+        {
+          "title": "Y/m/d",
+          "value": "ymd"
+        }
+      ]
+    },
+    {
+      "name": "latestTagCacheTtlSeconds",
+      "title": "Latest Tag Cache Timeout",
+      "description": "Invalidate latest-tag cache after this interval.",
+      "type": "dropdown",
+      "required": true,
+      "default": "60",
+      "data": [
+        {
+          "title": "1 minute",
+          "value": "60"
+        },
+        {
+          "title": "5 minutes",
+          "value": "300"
+        },
+        {
+          "title": "10 minutes",
+          "value": "600"
+        }
+      ]
+    }
+  ],
   "commands": [
     {
       "name": "search-images",

@@ -6,6 +6,8 @@ import { getProviderClients, providerIcon } from "./providers";
 import { getProviderConfigs } from "./providers/storage";
 import { RegistryImage, VulnerabilitySummary } from "./providers/types";
 import { buildFullArtifactPath } from "./utils/image-reference";
+import { useDelayedLoading } from "./utils/loading";
+import { formatDateTime, getUserSettings } from "./utils/settings";
 import { runInDefaultTerminal } from "./utils/terminal";
 
 function formatBytes(bytes?: number): string {
@@ -49,6 +51,7 @@ type SearchImagesResult = {
 };
 
 export default function Command() {
+  const settings = getUserSettings();
   const [searchText, setSearchText] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const { data: providerConfigs } = useCachedPromise(getProviderConfigs, []);
@@ -143,7 +146,7 @@ export default function Command() {
     [repositoryEntries],
   );
   const providersKeyList = useMemo(() => providers.map(({ config }) => config.id).join("|"), [providers]);
-  const { data: latestTags } = useCachedPromise(
+  const { data: latestTags, isLoading: isLoadingLatestTags } = useCachedPromise(
     async (entriesKey: string, providersKey: string) => {
       if (!entriesKey || !providersKey) return {} as Record<string, string | undefined>;
       const result = await Promise.all(
@@ -163,6 +166,7 @@ export default function Command() {
     [repositoryKeyList, providersKeyList],
     { keepPreviousData: true },
   );
+  const isLoadingLatestTagsSlow = useDelayedLoading(isLoadingLatestTags && repositoryEntries.length > 0);
 
   function handleSearchTextChange(text: string) {
     setSearchText(text);
@@ -276,7 +280,7 @@ export default function Command() {
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || isLoadingLatestTagsSlow}
       onSearchTextChange={handleSearchTextChange}
       searchBarPlaceholder="Search tag / image / project / digest"
       searchBarAccessory={providerDropdown}
@@ -313,6 +317,14 @@ export default function Command() {
       {searchText.trim() && images.length === 0 && failures.length > 0 ? (
         <List.EmptyView title="Search failed" description={failures.join(" | ")} icon={Icon.ExclamationMark} />
       ) : null}
+      {searchText.trim() && failures.length > 0 ? (
+        <List.Item
+          id="status-provider-failures-image-search"
+          title="Some providers failed"
+          subtitle={failures.join(" | ")}
+          icon={Icon.ExclamationMark}
+        />
+      ) : null}
       {searchText.trim() && images.length === 0 && failures.length === 0 && hideUntagged ? (
         <List.EmptyView
           title="No tagged images found"
@@ -344,7 +356,7 @@ export default function Command() {
             title={image.repository}
             subtitle={image.tag}
             accessories={[
-              isLatest ? { icon: { source: Icon.Bolt, tintColor: Color.Green }, tooltip: "Latest" } : { text: "" },
+              isLatest ? { icon: { source: Icon.ArrowUp, tintColor: Color.Green }, tooltip: "Latest" } : { text: "" },
               { icon: { source: severity.icon, tintColor: severity.color }, tooltip: severity.text },
             ]}
             detail={
@@ -356,21 +368,12 @@ export default function Command() {
                   `- **Project:** ${image.project}`,
                   `- **Size:** ${formatBytes(image.sizeBytes)}`,
                   `- **Platforms:** ${image.platforms?.length ? image.platforms.join(", ") : "-"}`,
-                  `- **Pushed At:** ${image.pushedAt ? new Date(image.pushedAt).toLocaleString() : "-"}`,
+                  `- **Pushed At:** ${formatDateTime(image.pushedAt, settings.dateFormat)}`,
                   `- **Scan Status:** ${image.scanStatus}`,
                   "",
                   "## Vulnerabilities",
                   vulnDetail(image.vulnerabilitySummary),
                 ].join("\n")}
-                metadata={
-                  isLatest ? (
-                    <List.Item.Detail.Metadata>
-                      <List.Item.Detail.Metadata.TagList title=" ">
-                        <List.Item.Detail.Metadata.TagList.Item icon={Icon.Bolt} color={Color.Green} />
-                      </List.Item.Detail.Metadata.TagList>
-                    </List.Item.Detail.Metadata>
-                  ) : undefined
-                }
               />
             }
             actions={
@@ -433,6 +436,14 @@ export default function Command() {
           />
         );
       })}
+      {isLoadingLatestTagsSlow ? (
+        <List.Item
+          id="status-loading-latest-tags"
+          title="Updating latest tags..."
+          subtitle="Some repositories are still loading. Results are not final yet."
+          icon={Icon.Clock}
+        />
+      ) : null}
     </List>
   );
 }
