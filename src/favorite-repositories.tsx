@@ -123,7 +123,7 @@ export default function Command() {
     ) as Record<string, string | undefined>;
   }, [latestTagCacheRaw, repositories, settings.latestTagCacheTtlMs]);
   const { data: latestTags, isLoading: isLoadingLatestTags } = useCachedPromise(
-    async (itemsKey: string, cacheRaw: string | undefined) => {
+    async (itemsKey: string, cacheRaw: string | undefined, latestTagCacheTtlMs: number) => {
       const indexes = itemsKey
         ? itemsKey
             .split("|")
@@ -141,7 +141,7 @@ export default function Command() {
         indexes.map(async (item) => {
           const key = `${item.providerId}:${item.projectName}:${item.repositoryName}`;
           const cached = cache[key];
-          if (cached && now - cached.fetchedAt <= settings.latestTagCacheTtlMs) {
+          if (cached && now - cached.fetchedAt <= latestTagCacheTtlMs) {
             return [key, cached.tag] as const;
           }
 
@@ -241,8 +241,8 @@ export default function Command() {
               displayedLatestTags[key]
                 ? { tag: { value: displayedLatestTags[key] ?? "", color: Color.Green }, tooltip: "Latest tag" }
                 : isLoadingLatestTags
-                ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
-                : { text: "" },
+                  ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
+                  : { text: "" },
               item.artifactCount !== undefined ? { text: `${item.artifactCount} artifacts` } : { text: "" },
               item.updateTime ? { text: formatDate(item.updateTime, settings.dateFormat) } : { text: "" },
             ]}

@@ -427,7 +427,13 @@ export function ProjectRepositoriesDetail(props: {
     ) as Record<string, string | undefined>;
   }, [latestTagCacheRaw, props.projectName, props.providerId, repositories, settings.latestTagCacheTtlMs]);
   const { data: latestTags, isLoading: isLoadingLatestTags } = useCachedPromise(
-    async (providerId: string, projectName: string, repositoryNames: string, cacheRaw: string | undefined) => {
+    async (
+      providerId: string,
+      projectName: string,
+      repositoryNames: string,
+      cacheRaw: string | undefined,
+      latestTagCacheTtlMs: number,
+    ) => {
       const names = repositoryNames ? repositoryNames.split(",").filter(Boolean) : [];
       const now = Date.now();
       const cache = parseLatestTagCache(cacheRaw);
@@ -436,7 +442,7 @@ export function ProjectRepositoriesDetail(props: {
         names.map(async (name) => {
           const cacheKey = buildRepositoryLatestTagCacheKey(providerId, projectName, name);
           const cached = cache[cacheKey];
-          if (cached && now - cached.fetchedAt <= settings.latestTagCacheTtlMs) {
+          if (cached && now - cached.fetchedAt <= latestTagCacheTtlMs) {
             return [name, cached.tag] as const;
           }
 
@@ -532,8 +538,8 @@ export function ProjectRepositoriesDetail(props: {
                   tooltip: "Latest tag",
                 }
               : isLoadingLatestTags
-              ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
-              : { text: "" },
+                ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
+                : { text: "" },
             repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
             repository.updateTime ? { text: formatDate(repository.updateTime, settings.dateFormat) } : { text: "" },
             favoriteRepos.some(
