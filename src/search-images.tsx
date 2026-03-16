@@ -20,7 +20,10 @@ function formatBytes(bytes?: number): string {
 
 function severityBadge(scanStatus: RegistryImage["scanStatus"], summary: VulnerabilitySummary) {
   if (scanStatus === "not-scanned") {
-    return { text: "Not scanned", icon: Icon.Clock, color: Color.SecondaryText };
+    return { text: "Not scanned", icon: Icon.MagnifyingGlass, color: Color.SecondaryText };
+  }
+  if (scanStatus === "scanning") {
+    return { text: "Scan in progress", icon: Icon.Clock, color: Color.Orange };
   }
   if (summary.critical > 0) return { text: `Critical ${summary.critical}`, icon: Icon.Dot, color: Color.Red };
   if (summary.high > 0) return { text: `High ${summary.high}`, icon: Icon.Dot, color: Color.Orange };

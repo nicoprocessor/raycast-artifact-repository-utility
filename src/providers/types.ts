@@ -33,7 +33,7 @@ export type RegistryImage = {
   pushedAt?: string;
   sizeBytes?: number;
   platforms?: string[];
-  scanStatus: "not-scanned" | "scanned";
+  scanStatus: "not-scanned" | "scanning" | "scanned";
   vulnerabilitySummary: VulnerabilitySummary;
   projectUrl: string;
   artifactUrl: string;

@@ -8,7 +8,11 @@ import {
   RegistryProvider,
   VulnerabilitySummary,
 } from "./types";
-import { parseHarborVulnerabilitySummary } from "../utils/vulnerability-parsing";
+import {
+  hasInProgressScanData,
+  hasVulnerabilityScanData,
+  parseHarborVulnerabilitySummary,
+} from "../utils/vulnerability-parsing";
 
 type HarborSearchResponse = {
   repository?: Array<{
@@ -236,6 +240,7 @@ export class HarborProvider implements RegistryProvider {
       .flatMap((artifact) => {
         const tags = artifact.tags?.length ? artifact.tags : [{ name: "untagged" }];
         const vulnerabilitySummary = this.parseScanSummary(artifact.scan_overview);
+        const scanStatus = this.parseScanStatus(artifact.scan_overview);
         const platforms = this.extractPlatforms(artifact);
         const repoFullName = `${project}/${repository}`;
 
@@ -251,7 +256,7 @@ export class HarborProvider implements RegistryProvider {
           pushedAt: artifact.push_time,
           sizeBytes: artifact.size,
           platforms,
-          scanStatus: artifact.scan_overview ? ("scanned" as const) : ("not-scanned" as const),
+          scanStatus,
           vulnerabilitySummary,
           projectUrl: `${this.baseUrl}/harbor/projects/${encodeURIComponent(project)}/repositories`,
           artifactUrl: `${this.baseUrl}/harbor/projects/${encodeURIComponent(
@@ -272,6 +277,13 @@ export class HarborProvider implements RegistryProvider {
 
   private parseScanSummary(scanOverview?: HarborArtifact["scan_overview"]): VulnerabilitySummary {
     return parseHarborVulnerabilitySummary(scanOverview);
+  }
+
+  private parseScanStatus(scanOverview?: HarborArtifact["scan_overview"]): RegistryImage["scanStatus"] {
+    if (!scanOverview) return "not-scanned";
+    if (hasInProgressScanData(scanOverview)) return "scanning";
+    if (hasVulnerabilityScanData(scanOverview)) return "scanned";
+    return "scanned";
   }
 
   private extractPlatforms(artifact: HarborArtifact): string[] {

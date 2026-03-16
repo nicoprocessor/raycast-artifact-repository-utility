@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { getProviderClients, providerIcon } from "./providers";
 import { ProviderKind, RegistryProvider } from "./providers/types";
 import { RepositoryArtifactsDetail } from "./search-projects";
+import { buildFullArtifactPath } from "./utils/image-reference";
 import { formatDate, getUserSettings } from "./utils/settings";
+import { runInDefaultTerminal } from "./utils/terminal";
 
 type FavoriteRepository = { providerId: string; projectName: string; repositoryName: string };
 type FavoriteRepositoryItem = FavoriteRepository & {
@@ -31,6 +33,19 @@ function parseLatestTagCache(raw: string | undefined): LatestTagCache {
   } catch {
     return {};
   }
+}
+
+async function copyText(content: string, title: string) {
+  await Clipboard.copy(content);
+  await showToast({ style: Toast.Style.Success, title, message: content });
+}
+
+function supportsGetLatestRepositoryTag(provider: RegistryProvider): boolean {
+  return typeof provider.getLatestRepositoryTag === "function";
+}
+
+function supportsListRepositoryArtifacts(provider: RegistryProvider): boolean {
+  return typeof provider.listRepositoryArtifacts === "function";
 }
 
 export default function Command() {
@@ -200,6 +215,10 @@ export default function Command() {
   }
 
   async function copyLatestTag(item: FavoriteRepositoryItem) {
+    if (!supportsGetLatestRepositoryTag(item.provider)) {
+      await showToast({ style: Toast.Style.Failure, title: "Latest tag is not supported by this provider" });
+      return;
+    }
     const key = `${item.providerId}:${item.projectName}:${item.repositoryName}`;
     const tag =
       displayedLatestTags[key] ?? (await item.provider.getLatestRepositoryTag(item.projectName, item.repositoryName));
@@ -209,6 +228,88 @@ export default function Command() {
     }
     await Clipboard.copy(tag);
     await showToast({ style: Toast.Style.Success, title: `Latest tag copied: ${tag}` });
+  }
+
+  async function resolveLatestArtifact(item: FavoriteRepositoryItem) {
+    if (!supportsGetLatestRepositoryTag(item.provider) || !supportsListRepositoryArtifacts(item.provider)) {
+      return undefined;
+    }
+    const key = `${item.providerId}:${item.projectName}:${item.repositoryName}`;
+    const tag =
+      displayedLatestTags[key] ?? (await item.provider.getLatestRepositoryTag(item.projectName, item.repositoryName));
+    if (!tag) return undefined;
+
+    const repositoryPath = `${item.projectName}/${item.repositoryName}`;
+    const fullArtifactPath = buildFullArtifactPath(item.providerKind, repositoryPath, tag, item.providerBaseUrl);
+
+    try {
+      const images = await item.provider.listRepositoryArtifacts(item.projectName, item.repositoryName, tag);
+      const latestImage = images.find((image) => image.tag === tag) ?? images[0];
+      return {
+        tag,
+        fullArtifactPath,
+        digest: latestImage?.digest,
+        artifactUrl: latestImage?.artifactUrl,
+        projectUrl: latestImage?.projectUrl,
+      };
+    } catch {
+      return { tag, fullArtifactPath };
+    }
+  }
+
+  async function copyLatestArtifactPath(item: FavoriteRepositoryItem) {
+    const latest = await resolveLatestArtifact(item);
+    if (!latest) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest artifact available" });
+      return;
+    }
+    await copyText(latest.fullArtifactPath, "Latest full artifact path copied");
+  }
+
+  async function copyLatestArtifactUrl(item: FavoriteRepositoryItem) {
+    const latest = await resolveLatestArtifact(item);
+    if (!latest?.artifactUrl) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest artifact URL available" });
+      return;
+    }
+    await copyText(latest.artifactUrl, "Latest artifact URL copied");
+  }
+
+  async function copyLatestProjectUrl(item: FavoriteRepositoryItem) {
+    const latest = await resolveLatestArtifact(item);
+    if (!latest?.projectUrl) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest project URL available" });
+      return;
+    }
+    await copyText(latest.projectUrl, "Latest project URL copied");
+  }
+
+  async function copyLatestDigest(item: FavoriteRepositoryItem) {
+    const latest = await resolveLatestArtifact(item);
+    if (!latest?.digest) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest digest available" });
+      return;
+    }
+    await copyText(latest.digest, "Latest digest copied");
+  }
+
+  async function pullLatestLocally(item: FavoriteRepositoryItem) {
+    const latest = await resolveLatestArtifact(item);
+    if (!latest) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest artifact available" });
+      return;
+    }
+    await showToast({
+      style: Toast.Style.Animated,
+      title: "Starting local pull...",
+      message: `docker pull ${latest.fullArtifactPath}`,
+    });
+    await runInDefaultTerminal(`docker pull ${latest.fullArtifactPath}`);
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Docker pull started in your terminal",
+      message: latest.fullArtifactPath,
+    });
   }
 
   async function refreshLatestTags() {
@@ -240,9 +341,14 @@ export default function Command() {
             accessories={[
               displayedLatestTags[key]
                 ? { tag: { value: displayedLatestTags[key] ?? "", color: Color.Green }, tooltip: "Latest tag" }
+                : !supportsGetLatestRepositoryTag(item.provider)
+                ? {
+                    icon: { source: Icon.ExclamationMark, tintColor: Color.SecondaryText },
+                    tooltip: "Latest tag unavailable",
+                  }
                 : isLoadingLatestTags
-                  ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
-                  : { text: "" },
+                ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
+                : { text: "" },
               item.artifactCount !== undefined ? { text: `${item.artifactCount} artifacts` } : { text: "" },
               item.updateTime ? { text: formatDate(item.updateTime, settings.dateFormat) } : { text: "" },
             ]}
@@ -259,6 +365,29 @@ export default function Command() {
                   }
                 />
                 <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(item)} />
+                <Action
+                  title="Copy Latest Full Artifact Path"
+                  icon={Icon.Clipboard}
+                  shortcut={{ modifiers: ["cmd"], key: "enter" }}
+                  onAction={() => copyLatestArtifactPath(item)}
+                />
+                <Action title="Copy Latest Digest" icon={Icon.Clipboard} onAction={() => copyLatestDigest(item)} />
+                <Action
+                  title="Copy Latest Artifact URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyLatestArtifactUrl(item)}
+                />
+                <Action
+                  title="Copy Latest Project URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyLatestProjectUrl(item)}
+                />
+                <Action
+                  title="Pull Latest Locally (Docker)"
+                  icon={Icon.Download}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
+                  onAction={() => pullLatestLocally(item)}
+                />
                 <Action
                   title="Refresh Latest Tags"
                   icon={Icon.ArrowClockwise}

@@ -43,7 +43,10 @@ function formatBytes(bytes?: number): string {
 
 function severityBadge(scanStatus: RegistryImage["scanStatus"], summary: VulnerabilitySummary) {
   if (scanStatus === "not-scanned") {
-    return { text: "Not scanned", icon: Icon.Clock, color: Color.SecondaryText };
+    return { text: "Not scanned", icon: Icon.MagnifyingGlass, color: Color.SecondaryText };
+  }
+  if (scanStatus === "scanning") {
+    return { text: "Scan in progress", icon: Icon.Clock, color: Color.Orange };
   }
   if (summary.critical > 0) return { text: `Critical ${summary.critical}`, icon: Icon.Dot, color: Color.Red };
   if (summary.high > 0) return { text: `High ${summary.high}`, icon: Icon.Dot, color: Color.Orange };
@@ -126,15 +129,18 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
   );
   const provider = providerEntry?.client;
   const providerConfig = providerEntry?.config;
+  const supportsListRepositoryArtifacts = typeof provider?.listRepositoryArtifacts === "function";
+  const supportsGetLatestRepositoryTag = typeof provider?.getLatestRepositoryTag === "function";
+  const supportsArtifactDetail = supportsListRepositoryArtifacts && supportsGetLatestRepositoryTag;
   const { data, isLoading, revalidate } = useCachedPromise(
     async (providerId: string, projectName: string, repositoryName: string, query: string) => {
-      if (!provider) return [] as RegistryImage[];
+      if (!supportsListRepositoryArtifacts || !provider) return [] as RegistryImage[];
       return provider.listRepositoryArtifacts(projectName, repositoryName, query);
     },
     [providerEntry?.config.id ?? "", props.projectName, props.repositoryName, searchText],
     {
       keepPreviousData: true,
-      execute: Boolean(provider),
+      execute: supportsListRepositoryArtifacts,
     },
   );
 
@@ -157,7 +163,7 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
   );
   const { data: latestTag, isLoading: isLoadingLatestTag } = useCachedPromise(
     async (providerId: string, projectName: string, repositoryName: string) => {
-      if (!provider) return undefined;
+      if (!supportsGetLatestRepositoryTag || !provider) return undefined;
       try {
         return await provider.getLatestRepositoryTag(projectName, repositoryName);
       } catch {
@@ -165,9 +171,9 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
       }
     },
     [providerEntry?.config.id ?? "", props.projectName, props.repositoryName],
-    { keepPreviousData: true, execute: Boolean(provider) },
+    { keepPreviousData: true, execute: supportsGetLatestRepositoryTag },
   );
-  const isLoadingLatestTagSlow = useDelayedLoading(isLoadingLatestTag && Boolean(provider));
+  const isLoadingLatestTagSlow = useDelayedLoading(isLoadingLatestTag && supportsGetLatestRepositoryTag);
 
   async function toggleFavoriteRepository() {
     const exists = favoriteRepos.some(
@@ -222,7 +228,10 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
       primaryAction: { title: "Delete Tag", style: Alert.ActionStyle.Destructive },
     });
     if (!confirmed) return;
-    if (!provider) return;
+    if (!provider || typeof provider.deleteTag !== "function") {
+      await showToast({ style: Toast.Style.Failure, title: "Delete tag is not supported by this provider" });
+      return;
+    }
     await runArtifactAction(
       () => provider.deleteTag(image.project, image.repositoryName, image.digest, image.tag),
       "Deleting tag...",
@@ -237,7 +246,10 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
       primaryAction: { title: "Delete Artifact", style: Alert.ActionStyle.Destructive },
     });
     if (!confirmed) return;
-    if (!provider) return;
+    if (!provider || typeof provider.deleteArtifact !== "function") {
+      await showToast({ style: Toast.Style.Failure, title: "Delete artifact is not supported by this provider" });
+      return;
+    }
     await runArtifactAction(
       () => provider.deleteArtifact(image.project, image.repositoryName, image.digest),
       "Deleting artifact...",
@@ -246,7 +258,10 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
   }
 
   async function onTriggerScan(image: RegistryImage) {
-    if (!provider) return;
+    if (!provider || typeof provider.triggerScan !== "function") {
+      await showToast({ style: Toast.Style.Failure, title: "Trigger scan is not supported by this provider" });
+      return;
+    }
     await runArtifactAction(
       () => provider.triggerScan(image.project, image.repositoryName, image.digest),
       "Starting scan...",
@@ -265,7 +280,13 @@ export function RepositoryArtifactsDetail(props: { providerId: string; projectNa
       {!provider ? (
         <List.EmptyView title="Provider unavailable" description="Enable the provider or update its configuration." />
       ) : null}
-      {images.length === 0 ? <List.EmptyView title="No artifacts found" /> : null}
+      {provider && !supportsArtifactDetail ? (
+        <List.EmptyView
+          title="Provider unavailable"
+          description="This provider does not expose artifact operations for this view."
+        />
+      ) : null}
+      {provider && supportsArtifactDetail && images.length === 0 ? <List.EmptyView title="No artifacts found" /> : null}
       {images.map((image) => {
         const severity = severityBadge(image.scanStatus, image.vulnerabilitySummary);
         const fullArtifactPath = buildFullArtifactPath(
@@ -381,6 +402,9 @@ export function ProjectRepositoriesDetail(props: {
   projectName: string;
 }) {
   const settings = getUserSettings();
+  const supportsGetLatestRepositoryTag = typeof props.provider.getLatestRepositoryTag === "function";
+  const supportsListRepositoryArtifacts = typeof props.provider.listRepositoryArtifacts === "function";
+  const supportsRepositoryLatestOps = supportsGetLatestRepositoryTag && supportsListRepositoryArtifacts;
   const [searchText, setSearchText] = useState("");
   const { value: favoriteReposRaw, setValue: setFavoriteReposRaw } = useLocalStorage<string>(
     "favorite-repositories",
@@ -434,6 +458,7 @@ export function ProjectRepositoriesDetail(props: {
       cacheRaw: string | undefined,
       latestTagCacheTtlMs: number,
     ) => {
+      if (!supportsGetLatestRepositoryTag) return {} as Record<string, string | undefined>;
       const names = repositoryNames ? repositoryNames.split(",").filter(Boolean) : [];
       const now = Date.now();
       const cache = parseLatestTagCache(cacheRaw);
@@ -464,11 +489,15 @@ export function ProjectRepositoriesDetail(props: {
       return Object.fromEntries(result) as Record<string, string | undefined>;
     },
     [props.providerId, props.projectName, repositoriesKey, latestTagCacheRaw, settings.latestTagCacheTtlMs],
-    { keepPreviousData: true },
+    { keepPreviousData: true, execute: supportsGetLatestRepositoryTag },
   );
   const displayedLatestTags = latestTags ?? cachedLatestTags;
 
   async function copyLatestTag(repositoryName: string) {
+    if (!supportsGetLatestRepositoryTag) {
+      await showToast({ style: Toast.Style.Failure, title: "Latest tag is not supported by this provider" });
+      return;
+    }
     const tag =
       displayedLatestTags[repositoryName] ??
       (await props.provider.getLatestRepositoryTag(props.projectName, repositoryName));
@@ -478,6 +507,86 @@ export function ProjectRepositoriesDetail(props: {
     }
     await Clipboard.copy(tag);
     await showToast({ style: Toast.Style.Success, title: `Latest tag copied: ${tag}` });
+  }
+
+  async function resolveLatestArtifact(repositoryName: string) {
+    if (!supportsRepositoryLatestOps) return undefined;
+    const tag =
+      displayedLatestTags[repositoryName] ??
+      (await props.provider.getLatestRepositoryTag(props.projectName, repositoryName));
+    if (!tag) return undefined;
+
+    const repositoryPath = `${props.projectName}/${repositoryName}`;
+    const fullArtifactPath = buildFullArtifactPath(props.providerKind, repositoryPath, tag, props.providerBaseUrl);
+
+    try {
+      const images = await props.provider.listRepositoryArtifacts(props.projectName, repositoryName, tag);
+      const latestImage = images.find((image) => image.tag === tag) ?? images[0];
+      return {
+        tag,
+        fullArtifactPath,
+        digest: latestImage?.digest,
+        artifactUrl: latestImage?.artifactUrl,
+        projectUrl: latestImage?.projectUrl,
+      };
+    } catch {
+      return { tag, fullArtifactPath };
+    }
+  }
+
+  async function copyLatestArtifactPath(repositoryName: string) {
+    const latest = await resolveLatestArtifact(repositoryName);
+    if (!latest) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest artifact available" });
+      return;
+    }
+    await copyText(latest.fullArtifactPath, "Latest full artifact path copied");
+  }
+
+  async function copyLatestDigest(repositoryName: string) {
+    const latest = await resolveLatestArtifact(repositoryName);
+    if (!latest?.digest) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest digest available" });
+      return;
+    }
+    await copyText(latest.digest, "Latest digest copied");
+  }
+
+  async function copyLatestArtifactUrl(repositoryName: string) {
+    const latest = await resolveLatestArtifact(repositoryName);
+    if (!latest?.artifactUrl) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest artifact URL available" });
+      return;
+    }
+    await copyText(latest.artifactUrl, "Latest artifact URL copied");
+  }
+
+  async function copyLatestProjectUrl(repositoryName: string) {
+    const latest = await resolveLatestArtifact(repositoryName);
+    if (!latest?.projectUrl) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest project URL available" });
+      return;
+    }
+    await copyText(latest.projectUrl, "Latest project URL copied");
+  }
+
+  async function pullLatestLocally(repositoryName: string) {
+    const latest = await resolveLatestArtifact(repositoryName);
+    if (!latest) {
+      await showToast({ style: Toast.Style.Failure, title: "No latest artifact available" });
+      return;
+    }
+    await showToast({
+      style: Toast.Style.Animated,
+      title: "Starting local pull...",
+      message: `docker pull ${latest.fullArtifactPath}`,
+    });
+    await runInDefaultTerminal(`docker pull ${latest.fullArtifactPath}`);
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Docker pull started in your terminal",
+      message: latest.fullArtifactPath,
+    });
   }
 
   async function toggleFavoriteRepository(repositoryName: string) {
@@ -520,81 +629,117 @@ export function ProjectRepositoriesDetail(props: {
 
   return (
     <List
-      isLoading={isLoading || (isLoadingLatestTags && repositories.length > 0)}
+      isLoading={isLoading || (supportsGetLatestRepositoryTag && isLoadingLatestTags && repositories.length > 0)}
       onSearchTextChange={setSearchText}
       searchBarPlaceholder="Search repositories in project"
       throttle
     >
-      {repositories.length === 0 ? <List.EmptyView title="No repositories found" /> : null}
-      {repositories.map((repository) => (
-        <List.Item
-          key={repository.id}
-          icon={Icon.Box}
-          title={repository.name}
-          accessories={[
-            displayedLatestTags[repository.name]
-              ? {
-                  tag: { value: displayedLatestTags[repository.name] ?? "", color: Color.Green },
-                  tooltip: "Latest tag",
-                }
-              : isLoadingLatestTags
+      {!supportsRepositoryLatestOps ? (
+        <List.EmptyView
+          title="Provider unavailable"
+          description="This provider does not expose latest artifact operations for repository view."
+        />
+      ) : null}
+      {supportsRepositoryLatestOps && repositories.length === 0 ? (
+        <List.EmptyView title="No repositories found" />
+      ) : null}
+      {supportsRepositoryLatestOps &&
+        repositories.map((repository) => (
+          <List.Item
+            key={repository.id}
+            icon={Icon.Box}
+            title={repository.name}
+            accessories={[
+              displayedLatestTags[repository.name]
+                ? {
+                    tag: { value: displayedLatestTags[repository.name] ?? "", color: Color.Green },
+                    tooltip: "Latest tag",
+                  }
+                : supportsGetLatestRepositoryTag && isLoadingLatestTags
                 ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
                 : { text: "" },
-            repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
-            repository.updateTime ? { text: formatDate(repository.updateTime, settings.dateFormat) } : { text: "" },
-            favoriteRepos.some(
-              (item) =>
-                item.providerId === props.providerId &&
-                item.projectName === props.projectName &&
-                item.repositoryName === repository.name,
-            )
-              ? { icon: { source: Icon.Star, tintColor: Color.Yellow } }
-              : { text: "" },
-          ]}
-          actions={
-            <ActionPanel>
-              <Action.Push
-                title="Inspect Artifacts"
-                target={
-                  <RepositoryArtifactsDetail
-                    providerId={props.providerId}
-                    projectName={props.projectName}
-                    repositoryName={repository.name}
-                  />
-                }
-              />
-              <Action.OpenInBrowser title="Open Repository in Browser" url={repository.url} />
-              <Action
-                title="Copy Repository Name"
-                icon={Icon.Clipboard}
-                onAction={() => copyText(repository.name, "Repository name copied")}
-              />
-              <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(repository.name)} />
-              <Action
-                title="Refresh Latest Tags"
-                icon={Icon.ArrowClockwise}
-                shortcut={{ modifiers: ["cmd"], key: "r" }}
-                onAction={refreshLatestTags}
-              />
-              <Action
-                title={
-                  favoriteRepos.some(
-                    (item) =>
-                      item.providerId === props.providerId &&
-                      item.projectName === props.projectName &&
-                      item.repositoryName === repository.name,
-                  )
-                    ? "Remove from Favorite Repositories"
-                    : "Add to Favorite Repositories"
-                }
-                icon={Icon.Star}
-                onAction={() => toggleFavoriteRepository(repository.name)}
-              />
-            </ActionPanel>
-          }
-        />
-      ))}
-      {isLoadingLatestTags && repositories.length > 0 ? (
+              repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
+              repository.updateTime ? { text: formatDate(repository.updateTime, settings.dateFormat) } : { text: "" },
+              favoriteRepos.some(
+                (item) =>
+                  item.providerId === props.providerId &&
+                  item.projectName === props.projectName &&
+                  item.repositoryName === repository.name,
+              )
+                ? { icon: { source: Icon.Star, tintColor: Color.Yellow } }
+                : { text: "" },
+            ]}
+            actions={
+              <ActionPanel>
+                <Action.Push
+                  title="Inspect Artifacts"
+                  target={
+                    <RepositoryArtifactsDetail
+                      providerId={props.providerId}
+                      projectName={props.projectName}
+                      repositoryName={repository.name}
+                    />
+                  }
+                />
+                <Action.OpenInBrowser title="Open Repository in Browser" url={repository.url} />
+                <Action
+                  title="Copy Repository Name"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyText(repository.name, "Repository name copied")}
+                />
+                <Action title="Copy Latest Tag" icon={Icon.Clipboard} onAction={() => copyLatestTag(repository.name)} />
+                <Action
+                  title="Copy Latest Full Artifact Path"
+                  icon={Icon.Clipboard}
+                  shortcut={{ modifiers: ["cmd"], key: "enter" }}
+                  onAction={() => copyLatestArtifactPath(repository.name)}
+                />
+                <Action
+                  title="Copy Latest Digest"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyLatestDigest(repository.name)}
+                />
+                <Action
+                  title="Copy Latest Artifact URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyLatestArtifactUrl(repository.name)}
+                />
+                <Action
+                  title="Copy Latest Project URL"
+                  icon={Icon.Clipboard}
+                  onAction={() => copyLatestProjectUrl(repository.name)}
+                />
+                <Action
+                  title="Pull Latest Locally (Docker)"
+                  icon={Icon.Download}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
+                  onAction={() => pullLatestLocally(repository.name)}
+                />
+                <Action
+                  title="Refresh Latest Tags"
+                  icon={Icon.ArrowClockwise}
+                  shortcut={{ modifiers: ["cmd"], key: "r" }}
+                  onAction={refreshLatestTags}
+                />
+                <Action
+                  title={
+                    favoriteRepos.some(
+                      (item) =>
+                        item.providerId === props.providerId &&
+                        item.projectName === props.projectName &&
+                        item.repositoryName === repository.name,
+                    )
+                      ? "Remove from Favorite Repositories"
+                      : "Add to Favorite Repositories"
+                  }
+                  icon={Icon.Star}
+                  onAction={() => toggleFavoriteRepository(repository.name)}
+                />
+              </ActionPanel>
+            }
+          />
+        ))}
+      {supportsGetLatestRepositoryTag && isLoadingLatestTags && repositories.length > 0 ? (
         <List.Item
           id="status-loading-project-repositories-latest-tags"
           title="Updating latest tags..."
