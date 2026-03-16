@@ -70,6 +70,17 @@ async function copyText(content: string, title: string) {
   await showToast({ style: Toast.Style.Success, title, message: content });
 }
 
+function providerFailuresMarkdown(failures: string[]): string {
+  if (failures.length === 0) return "# Provider Errors\n\nNo errors.";
+  const items = failures.map((failure) => `- ${failure}`).join("\n");
+  return `# Provider Errors\n\n${items}`;
+}
+
+function providerFailuresAsMarkdownCodeBlock(failures: string[]): string {
+  const body = failures.length > 0 ? failures.join("\n") : "No errors.";
+  return `## Provider Errors\n\n\`\`\`text\n${body}\n\`\`\``;
+}
+
 function ProjectMembersDetail(props: { provider: RegistryProvider; projectName: string }) {
   const { data, isLoading } = useCachedPromise(
     (projectName: string) => props.provider.listProjectMembers(projectName),
@@ -827,9 +838,16 @@ export default function Command() {
     await revalidate();
   }
 
+  async function copyProviderErrorsAsMarkdown() {
+    const markdown = providerFailuresAsMarkdownCodeBlock(failures);
+    await Clipboard.copy(markdown);
+    await showToast({ style: Toast.Style.Success, title: "Provider errors copied as Markdown" });
+  }
+
   return (
     <List
       isLoading={isLoading}
+      isShowingDetail
       onSearchTextChange={setSearchText}
       searchBarPlaceholder="Search projects"
       searchBarAccessory={
@@ -876,6 +894,25 @@ export default function Command() {
           title="Some providers failed"
           subtitle={failures.join(" | ")}
           icon={Icon.ExclamationMark}
+          detail={
+            <List.Item.Detail
+              markdown={providerFailuresMarkdown(failures)}
+              metadata={
+                <List.Item.Detail.Metadata>
+                  <List.Item.Detail.Metadata.Label title="Failed Providers" text={String(failures.length)} />
+                </List.Item.Detail.Metadata>
+              }
+            />
+          }
+          actions={
+            <ActionPanel>
+              <Action
+                title="Copy Provider Errors as Markdown"
+                icon={Icon.Clipboard}
+                onAction={copyProviderErrorsAsMarkdown}
+              />
+            </ActionPanel>
+          }
         />
       ) : null}
 

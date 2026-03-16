@@ -46,6 +46,17 @@ function latestTagKey(entry: Pick<RegistryImage, "providerId" | "project" | "rep
   return `${entry.providerId}::${entry.project}::${entry.repositoryName}`;
 }
 
+function providerFailuresMarkdown(failures: string[]): string {
+  if (failures.length === 0) return "# Provider Errors\n\nNo errors.";
+  const items = failures.map((failure) => `- ${failure}`).join("\n");
+  return `# Provider Errors\n\n${items}`;
+}
+
+function providerFailuresAsMarkdownCodeBlock(failures: string[]): string {
+  const body = failures.length > 0 ? failures.join("\n") : "No errors.";
+  return `## Provider Errors\n\n\`\`\`text\n${body}\n\`\`\``;
+}
+
 type SearchImagesResult = {
   images: RegistryImage[];
   providers: Awaited<ReturnType<typeof getProviderClients>>;
@@ -238,6 +249,12 @@ export default function Command() {
     await showToast({ style: Toast.Style.Success, title, message: content });
   }
 
+  async function copyProviderErrorsAsMarkdown() {
+    const markdown = providerFailuresAsMarkdownCodeBlock(failures);
+    await Clipboard.copy(markdown);
+    await showToast({ style: Toast.Style.Success, title: "Provider errors copied as Markdown" });
+  }
+
   async function toggleFavoriteRepository(providerId: string, projectName: string, repositoryName: string) {
     const exists = favoriteRepos.some(
       (entry) =>
@@ -326,6 +343,25 @@ export default function Command() {
           title="Some providers failed"
           subtitle={failures.join(" | ")}
           icon={Icon.ExclamationMark}
+          detail={
+            <List.Item.Detail
+              markdown={providerFailuresMarkdown(failures)}
+              metadata={
+                <List.Item.Detail.Metadata>
+                  <List.Item.Detail.Metadata.Label title="Failed Providers" text={String(failures.length)} />
+                </List.Item.Detail.Metadata>
+              }
+            />
+          }
+          actions={
+            <ActionPanel>
+              <Action
+                title="Copy Provider Errors as Markdown"
+                icon={Icon.Clipboard}
+                onAction={copyProviderErrorsAsMarkdown}
+              />
+            </ActionPanel>
+          }
         />
       ) : null}
       {searchText.trim() && images.length === 0 && failures.length === 0 && hideUntagged ? (
