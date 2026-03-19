@@ -1,7 +1,8 @@
-import { Action, ActionPanel, Color, Form, Icon, List, showToast, Toast, useNavigation } from "@raycast/api";
+import { Action, ActionPanel, Clipboard, Color, Form, Icon, List, showToast, Toast, useNavigation } from "@raycast/api";
 import { useCachedPromise, useLocalStorage } from "@raycast/utils";
 import { useMemo, useState } from "react";
-import { createProvider, providerIcon } from "./providers";
+import { providerIcon } from "./providers";
+import { runProviderConnectionTest } from "./providers/connection-test";
 import { addProviderConfig, getProviderConfigs, removeProviderConfig, updateProviderConfig } from "./providers/storage";
 import { ProviderConfig, ProviderKind } from "./providers/types";
 
@@ -14,6 +15,8 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
   const { pop } = useNavigation();
   const [kind, setKind] = useState<ProviderKind>("private-harbor");
   const [isLoading, setIsLoading] = useState(false);
+  const [lastTestFeedback, setLastTestFeedback] = useState<string>();
+  const [lastTestLog, setLastTestLog] = useState<string>();
 
   async function onSubmit(values: {
     kind: ProviderKind;
@@ -44,8 +47,24 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
         defaultNamespace: values.kind === "docker-hub" ? values.defaultNamespace?.trim() : undefined,
       };
 
+      const testResult = await runProviderConnectionTest(config);
+      setLastTestLog(testResult.markdownLog);
+      if (testResult.status === "failed") {
+        const message = testResult.error ?? "Unknown connection error";
+        const fix = testResult.suggestedFix ? ` Suggested fix: ${testResult.suggestedFix}` : "";
+        setLastTestFeedback(`Connection test failed: ${message}.${fix}`);
+        await showToast({ style: Toast.Style.Failure, title: testResult.summary, message });
+        return;
+      }
+
+      setLastTestFeedback("Connection test passed.");
+
       await addProviderConfig(config);
-      await showToast({ style: Toast.Style.Success, title: `Provider added: ${config.label}` });
+      await showToast({
+        style: Toast.Style.Success,
+        title: `Provider added: ${config.label}`,
+        message: "Connection OK",
+      });
       if (props.onSaved) await props.onSaved();
       pop();
     } catch (error) {
@@ -66,12 +85,27 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Save Provider" onSubmit={onSubmit} />
+          {lastTestLog ? (
+            <Action
+              title="Copy Last Test Log"
+              icon={Icon.Clipboard}
+              onAction={async () => {
+                await Clipboard.copy(lastTestLog);
+                await showToast({ style: Toast.Style.Success, title: "Copied test log as Markdown" });
+              }}
+            />
+          ) : null}
         </ActionPanel>
       }
     >
       <Form.Dropdown id="kind" title="Provider" value={kind} onChange={(value) => setKind(value as ProviderKind)}>
         <Form.Dropdown.Item value="private-harbor" title="Private Harbor" icon={providerIcon("private-harbor")} />
-        <Form.Dropdown.Item value="docker-hub" title="Docker Hub (Beta)" icon={providerIcon("docker-hub")} />
+        <Form.Dropdown.Item
+          value="docker-hub"
+          title="Docker Hub (Coming soon)"
+          icon={providerIcon("docker-hub")}
+          disabled
+        />
       </Form.Dropdown>
       <Form.TextField
         id="label"
@@ -94,6 +128,7 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
           <Form.TextField id="defaultNamespace" title="Default Namespace" placeholder="organization or username" />
         </>
       )}
+      {lastTestFeedback ? <Form.Description text={lastTestFeedback} /> : null}
     </Form>
   );
 }
@@ -102,6 +137,8 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
   const { pop } = useNavigation();
   const [kind, setKind] = useState<ProviderKind>(props.provider.kind);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastTestFeedback, setLastTestFeedback] = useState<string>();
+  const [lastTestLog, setLastTestLog] = useState<string>();
 
   async function onSubmit(values: {
     kind: ProviderKind;
@@ -138,8 +175,24 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
         disabled: props.provider.disabled,
       };
 
+      const testResult = await runProviderConnectionTest(config);
+      setLastTestLog(testResult.markdownLog);
+      if (testResult.status === "failed") {
+        const message = testResult.error ?? "Unknown connection error";
+        const fix = testResult.suggestedFix ? ` Suggested fix: ${testResult.suggestedFix}` : "";
+        setLastTestFeedback(`Connection test failed: ${message}.${fix}`);
+        await showToast({ style: Toast.Style.Failure, title: testResult.summary, message });
+        return;
+      }
+
+      setLastTestFeedback("Connection test passed.");
+
       await updateProviderConfig(props.provider.id, config);
-      await showToast({ style: Toast.Style.Success, title: `Provider updated: ${config.label}` });
+      await showToast({
+        style: Toast.Style.Success,
+        title: `Provider updated: ${config.label}`,
+        message: "Connection OK",
+      });
       if (props.onSaved) await props.onSaved();
       pop();
     } catch (error) {
@@ -160,12 +213,27 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Update Provider" onSubmit={onSubmit} />
+          {lastTestLog ? (
+            <Action
+              title="Copy Last Test Log"
+              icon={Icon.Clipboard}
+              onAction={async () => {
+                await Clipboard.copy(lastTestLog);
+                await showToast({ style: Toast.Style.Success, title: "Copied test log as Markdown" });
+              }}
+            />
+          ) : null}
         </ActionPanel>
       }
     >
       <Form.Dropdown id="kind" title="Provider" value={kind} onChange={(value) => setKind(value as ProviderKind)}>
         <Form.Dropdown.Item value="private-harbor" title="Private Harbor" icon={providerIcon("private-harbor")} />
-        <Form.Dropdown.Item value="docker-hub" title="Docker Hub (Beta)" icon={providerIcon("docker-hub")} />
+        <Form.Dropdown.Item
+          value="docker-hub"
+          title="Docker Hub (Coming soon)"
+          icon={providerIcon("docker-hub")}
+          disabled
+        />
       </Form.Dropdown>
       <Form.TextField id="label" title="Display Name" defaultValue={props.provider.label} />
       {kind === "private-harbor" ? (
@@ -217,6 +285,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
           />
         </>
       )}
+      {lastTestFeedback ? <Form.Description text={lastTestFeedback} /> : null}
     </Form>
   );
 }
@@ -263,18 +332,26 @@ export default function Command() {
     }
     await setConnectionStatus(provider.id, "testing");
     await showToast({ style: Toast.Style.Animated, title: `Testing ${provider.label}...` });
-    try {
-      const client = createProvider(provider);
-      await client.listProjects("");
+    const testResult = await runProviderConnectionTest(provider);
+    if (testResult.status === "ok") {
       await setConnectionStatus(provider.id, "success");
       await showToast({ style: Toast.Style.Success, title: `Connection OK: ${provider.label}` });
-    } catch (error) {
+      return;
+    }
+    await setConnectionStatus(provider.id, "failure");
+    await showToast({
+      style: Toast.Style.Failure,
+      title: `Connection failed: ${provider.label}`,
+      message: testResult.suggestedFix
+        ? `${testResult.error ?? "Unknown error"} (${testResult.suggestedFix})`
+        : testResult.error ?? "Unknown error",
+    });
+    try {
+      await Clipboard.copy(testResult.markdownLog);
+      await showToast({ style: Toast.Style.Success, title: "Failure log copied to clipboard (Markdown)" });
+    } catch {
       await setConnectionStatus(provider.id, "failure");
-      await showToast({
-        style: Toast.Style.Failure,
-        title: `Connection failed: ${provider.label}`,
-        message: error instanceof Error ? error.message : String(error),
-      });
+      // Ignore clipboard failures.
     }
   }
 

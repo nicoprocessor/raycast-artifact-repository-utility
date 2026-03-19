@@ -2,6 +2,7 @@ import { LocalStorage } from "@raycast/api";
 import { ProviderConfig } from "./types";
 
 const PROVIDERS_KEY = "registry-providers";
+const ENABLE_DOCKER_HUB_BETA = false;
 
 export async function getProviderConfigs(): Promise<ProviderConfig[]> {
   const raw = await LocalStorage.getItem<string>(PROVIDERS_KEY);
@@ -9,7 +10,15 @@ export async function getProviderConfigs(): Promise<ProviderConfig[]> {
 
   try {
     const parsed = JSON.parse(raw) as ProviderConfig[];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    const filtered = ENABLE_DOCKER_HUB_BETA ? parsed : parsed.filter((provider) => provider.kind !== "docker-hub");
+
+    // Self-heal existing local state so users keep only supported providers.
+    if (filtered.length !== parsed.length) {
+      await LocalStorage.setItem(PROVIDERS_KEY, JSON.stringify(filtered));
+    }
+
+    return filtered;
   } catch {
     return [];
   }
