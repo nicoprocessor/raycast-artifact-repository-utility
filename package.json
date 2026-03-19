@@ -100,7 +100,7 @@
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.104.9",
+    "@raycast/api": "^1.104.10",
     "@raycast/utils": "^2.2.3",
     "date-fns": "^2.30.0",
     "lodash": "^4.17.21",
