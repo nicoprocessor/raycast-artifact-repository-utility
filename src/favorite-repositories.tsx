@@ -342,13 +342,13 @@ export default function Command() {
               displayedLatestTags[key]
                 ? { tag: { value: displayedLatestTags[key] ?? "", color: Color.Green }, tooltip: "Latest tag" }
                 : !supportsGetLatestRepositoryTag(item.provider)
-                ? {
-                    icon: { source: Icon.ExclamationMark, tintColor: Color.SecondaryText },
-                    tooltip: "Latest tag unavailable",
-                  }
-                : isLoadingLatestTags
-                ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
-                : { text: "" },
+                  ? {
+                      icon: { source: Icon.ExclamationMark, tintColor: Color.SecondaryText },
+                      tooltip: "Latest tag unavailable",
+                    }
+                  : isLoadingLatestTags
+                    ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
+                    : { text: "" },
               item.artifactCount !== undefined ? { text: `${item.artifactCount} artifacts` } : { text: "" },
               item.updateTime ? { text: formatDate(item.updateTime, settings.dateFormat) } : { text: "" },
             ]}
