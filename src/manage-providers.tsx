@@ -344,7 +344,7 @@ export default function Command() {
       title: `Connection failed: ${provider.label}`,
       message: testResult.suggestedFix
         ? `${testResult.error ?? "Unknown error"} (${testResult.suggestedFix})`
-        : testResult.error ?? "Unknown error",
+        : (testResult.error ?? "Unknown error"),
     });
     try {
       await Clipboard.copy(testResult.markdownLog);
@@ -392,10 +392,10 @@ export default function Command() {
             connectionStatus[provider.id] === "success"
               ? { icon: { source: Icon.Dot, tintColor: Color.Green }, tooltip: "Connection OK" }
               : connectionStatus[provider.id] === "failure"
-              ? { icon: { source: Icon.Dot, tintColor: Color.Red }, tooltip: "Connection failed" }
-              : connectionStatus[provider.id] === "testing"
-              ? { icon: { source: Icon.Dot, tintColor: Color.Orange }, tooltip: "Testing..." }
-              : { text: "" },
+                ? { icon: { source: Icon.Dot, tintColor: Color.Red }, tooltip: "Connection failed" }
+                : connectionStatus[provider.id] === "testing"
+                  ? { icon: { source: Icon.Dot, tintColor: Color.Orange }, tooltip: "Testing..." }
+                  : { text: "" },
           ]}
           actions={
             <ActionPanel>
