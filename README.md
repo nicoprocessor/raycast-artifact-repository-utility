@@ -17,7 +17,22 @@ Raycast extension for working container artifact registries, with multi-provider
 ## Quality Checks
 
 - CI pipeline runs on push and pull requests.
-- Pipeline executes lint, build, and automated tests.
+- Pipeline executes formatting checks, lint, build, and automated tests.
+
+## Pre-commit (Staged Files Only)
+
+This repository uses `simple-git-hooks` with `lint-staged`.
+
+- On every commit, only staged files are processed.
+- JavaScript/TypeScript files in `src/` are auto-fixed with ESLint and formatted with Prettier.
+- JSON/Markdown/YAML/CSS/HTML staged files are formatted with Prettier.
+- Fixes are applied and re-staged automatically before the commit is finalized.
+
+To ensure hooks are installed after cloning:
+
+```bash
+pnpm install
+```
 
 ## Contributing
 
