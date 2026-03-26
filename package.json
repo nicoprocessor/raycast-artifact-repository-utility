@@ -95,7 +95,7 @@
       "name": "manage-providers",
       "title": "Manage Providers",
       "subtitle": "Artifact Registries",
-      "description": "Add and manage registry providers (Private Harbor, Docker Hub)",
+      "description": "Add and manage registry providers (Harbor, Docker Hub)",
       "mode": "view"
     }
   ],
@@ -121,11 +121,13 @@
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
+    "precommit-check": "npm run test -- --run && npm run lint && npm run prettier-check && npm run build",
     "prepare": "simple-git-hooks",
+    "prettier-check": "prettier --check .",
     "publish": "ray publish",
     "test": "vitest"
   },
   "simple-git-hooks": {
-    "pre-commit": "npm run test -- --run"
+    "pre-commit": "npm run precommit-check"
   }
 }

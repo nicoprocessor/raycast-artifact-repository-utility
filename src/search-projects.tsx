@@ -667,8 +667,8 @@ export function ProjectRepositoriesDetail(props: {
                     tooltip: "Latest tag",
                   }
                 : supportsGetLatestRepositoryTag && isLoadingLatestTags
-                ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
-                : { text: "" },
+                  ? { icon: { source: Icon.Clock, tintColor: Color.SecondaryText }, tooltip: "Refreshing latest tag" }
+                  : { text: "" },
               repository.artifactCount !== undefined ? { text: `${repository.artifactCount} artifacts` } : { text: "" },
               repository.updateTime ? { text: formatDate(repository.updateTime, settings.dateFormat) } : { text: "" },
               favoriteRepos.some(
