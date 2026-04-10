@@ -103,7 +103,7 @@
     "@raycast/api": "^1.104.10",
     "@raycast/utils": "^2.2.3",
     "date-fns": "^2.30.0",
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
