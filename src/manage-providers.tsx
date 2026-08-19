@@ -8,7 +8,7 @@ import { ProviderConfig, ProviderKind } from "./providers/types";
 
 function buildProviderLabel(kind: ProviderKind, customLabel?: string): string {
   if (customLabel?.trim()) return customLabel.trim();
-  return kind === "private-harbor" ? "Private Harbor" : "Docker Hub";
+  return kind === "private-harbor" ? "Harbor" : "Docker Hub";
 }
 
 export function AddProviderForm(props: { onSaved?: () => Promise<void> | void }) {
@@ -30,7 +30,7 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
     setIsLoading(true);
     try {
       if (values.kind === "private-harbor" && !values.baseUrl?.trim()) {
-        throw new Error("Registry Base URL is required for Private Harbor.");
+        throw new Error("Registry Base URL is required for Harbor.");
       }
       if (!values.username?.trim() || !values.password?.trim()) {
         throw new Error("Username and Password/Token are required.");
@@ -99,22 +99,17 @@ export function AddProviderForm(props: { onSaved?: () => Promise<void> | void })
       }
     >
       <Form.Dropdown id="kind" title="Provider" value={kind} onChange={(value) => setKind(value as ProviderKind)}>
-        <Form.Dropdown.Item value="private-harbor" title="Private Harbor" icon={providerIcon("private-harbor")} />
-        <Form.Dropdown.Item
-          value="docker-hub"
-          title="Docker Hub (Coming soon)"
-          icon={providerIcon("docker-hub")}
-          disabled
-        />
+        <Form.Dropdown.Item value="private-harbor" title="Harbor" icon={providerIcon("private-harbor")} />
+        <Form.Dropdown.Item value="docker-hub" title="Docker Hub (Coming soon)" icon={providerIcon("docker-hub")} />
       </Form.Dropdown>
       <Form.TextField
         id="label"
         title="Display Name"
-        placeholder={kind === "private-harbor" ? "Private Harbor" : "Docker Hub"}
+        placeholder={kind === "private-harbor" ? "Harbor" : "Docker Hub"}
       />
       {kind === "private-harbor" ? (
         <>
-          <Form.Description text="For Private Harbor Registry, use only the base URL. Example: https://registry.acme.inc (without /harbor)." />
+          <Form.Description text="For Harbor Registry, use only the base URL. Example: https://registry.acme.inc (without /harbor)." />
           <Form.TextField id="baseUrl" title="Registry Base URL" placeholder="https://registry.acme.inc" />
           <Form.TextField id="username" title="Registry Username" placeholder="username" />
           <Form.PasswordField id="password" title="Registry Password / Token" />
@@ -152,7 +147,7 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
     setIsLoading(true);
     try {
       if (values.kind === "private-harbor" && !values.baseUrl?.trim()) {
-        throw new Error("Registry Base URL is required for Private Harbor.");
+        throw new Error("Registry Base URL is required for Harbor.");
       }
       if (!values.username?.trim()) {
         throw new Error("Username is required.");
@@ -227,13 +222,8 @@ export function EditProviderForm(props: { provider: ProviderConfig; onSaved?: ()
       }
     >
       <Form.Dropdown id="kind" title="Provider" value={kind} onChange={(value) => setKind(value as ProviderKind)}>
-        <Form.Dropdown.Item value="private-harbor" title="Private Harbor" icon={providerIcon("private-harbor")} />
-        <Form.Dropdown.Item
-          value="docker-hub"
-          title="Docker Hub (Coming soon)"
-          icon={providerIcon("docker-hub")}
-          disabled
-        />
+        <Form.Dropdown.Item value="private-harbor" title="Harbor" icon={providerIcon("private-harbor")} />
+        <Form.Dropdown.Item value="docker-hub" title="Docker Hub (Coming soon)" icon={providerIcon("docker-hub")} />
       </Form.Dropdown>
       <Form.TextField id="label" title="Display Name" defaultValue={props.provider.label} />
       {kind === "private-harbor" ? (
@@ -344,7 +334,7 @@ export default function Command() {
       title: `Connection failed: ${provider.label}`,
       message: testResult.suggestedFix
         ? `${testResult.error ?? "Unknown error"} (${testResult.suggestedFix})`
-        : testResult.error ?? "Unknown error",
+        : (testResult.error ?? "Unknown error"),
     });
     try {
       await Clipboard.copy(testResult.markdownLog);

@@ -16,7 +16,7 @@
 
 ## [First Public Release] - 2026-03-04
 
-- Add multi-provider support for Private Harbor and Docker Hub (beta)
+- Add multi-provider support for Harbor and Docker Hub (beta)
 - Add image/project search and repository artifact inspection flows
 - Add scan, delete, copy, and local docker pull actions
 - Add quality pipeline with lint, build, and test checks
