@@ -114,7 +114,7 @@
     "prettier": "^3.8.1",
     "simple-git-hooks": "^2.13.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.6"
   },
   "scripts": {
     "build": "ray build -e dist",
